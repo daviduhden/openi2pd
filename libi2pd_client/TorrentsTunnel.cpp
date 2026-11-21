@@ -735,6 +735,8 @@ namespace torrents
 	void TorrentsTunnel::InitTorrentFiles (std::shared_ptr<Torrent> torrent)
 	{
 		if (!torrent || torrent->IsRemoved () || torrent->GetError () == eTorrentErrorMalformedMetaInfo) return;
+		const auto owner = std::weak_ptr<TorrentsTunnel> (
+			std::static_pointer_cast<TorrentsTunnel> (weak_from_this ().lock ()));
 		if (!IsContainedPath (torrent->GetFullPath (), true))
 		{
 			LogPrint (eLogError, "TorrentsTunnel: Refusing to initialise torrent outside ", m_TorrentsDir);
@@ -850,27 +852,7 @@ namespace torrents
 				presentFiles[currentFile] = true;
 			}
 		}
-		// Document backends do not preallocate or rename. Only the documents
-		// that responded to the exact-size probe are marked present, so the
-		// bounded verification chain hashes existing files and leaves pieces
-		// spanning a missing/revoked document downloadable. Never trust a
-		// cached bitfield or block the disk worker with a full rehash.
-		if (std::any_of (presentFiles.begin (), presentFiles.end (), [] (bool value) { return value; }))
-		{
-			// Some files may already exist under final or .part names after an
-			// interrupted promotion or a partial restore. Hash exactly the
-			// pieces fully backed by existing files; pieces spanning a missing
-			// file remain downloadable instead of forcing a full re-download.
-			const auto hash = torrent->GetInfoHash ();
-			boost::asio::post (GetService (),
-				[this, torrent, hash, presentFiles = std::move (presentFiles)] ()
-				{
-					if (m_Stopping || FindTorrent (hash) != torrent) return;
-					if (torrent->RequestLocalVerificationForExistingFiles (presentFiles))
-						ScheduleLocalVerification (torrent);
-				});
-		}
-
+		std::optional<std::vector<uint8_t>> resumeBitfield;
 		auto resumeFilePath = torrent->GetFullPath ();
 		resumeFilePath += ".resume";
 		if (!IsContainedPath (resumeFilePath, false))
@@ -913,39 +895,7 @@ namespace torrents
 						std::filesystem::remove (resumeFilePath, ec);
 				}
 				else
-				{
-					// A resume bitfield only says which blocks were written. It
-					// is applied on the service thread, the owner of the piece
-					// state that peers observe, and every restored piece is
-					// marked for local hashing before availability is published.
-					const auto hash = torrent->GetInfoHash ();
-					boost::asio::post (GetService (),
-						[this, torrent, hash, relativeResume, bitfield = std::move (bitfield)] ()
-						{
-							if (m_Stopping || FindTorrent (hash) != torrent) return;
-							if (!torrent->IsBitfieldValid (bitfield))
-							{
-								LogPrint (eLogWarning, "TorrentsTunnel: Ignoring invalid resume bitfield for ",
-									torrent->GetFullPath ());
-								boost::asio::post (GetDiskIOService (),
-									[this, relativeResume] ()
-									{
-										std::string removeError;
-										if (m_StorageWorker)
-											(void)m_StorageWorker->RemoveMetadata (relativeResume, removeError);
-										else if (!RemoveFileNoFollow (m_TorrentsDir, relativeResume, removeError))
-											LogPrint (eLogWarning,
-												"TorrentsTunnel: Can't remove invalid resume file: ", removeError);
-									});
-								return;
-							}
-							torrent->ApplyBitfield (bitfield);
-							torrent->RequestLocalVerification (false);
-							LogPrint (eLogInfo, "TorrentsTunnel: Resume bitfield applied for ", torrent->GetFullPath (),
-								"; verifying local data before availability is published");
-							ScheduleLocalVerification (torrent);
-						});
-				}
+					resumeBitfield.emplace (std::move (bitfield));
 			}
 			else
 			{
@@ -962,6 +912,53 @@ namespace torrents
 						eLogWarning, "TorrentsTunnel: Can't remove resume file ", resumeFilePath, " : ", ec.message ());
 			}
 		}
+
+		const bool hasPresentFiles =
+			std::any_of (presentFiles.begin (), presentFiles.end (), [] (bool value) { return value; });
+		if (!resumeBitfield && !hasPresentFiles) return;
+		// Apply both disk observations before starting the verifier. An
+		// existing file or resume bit is a claim about bytes, and only
+		// successful hashing may publish them as available.
+		const auto hash = torrent->GetInfoHash ();
+		auto relativeResume = resumeFilePath.lexically_relative (m_TorrentsDir);
+		boost::asio::post (GetService (),
+			[owner, torrent, hash, presentFiles = std::move (presentFiles), resumeBitfield = std::move (resumeBitfield),
+			 relativeResume = std::move (relativeResume), hasPresentFiles] ()
+			{
+				auto tunnel = owner.lock ();
+				if (!tunnel || tunnel->m_Stopping || torrent->IsRemoved () || tunnel->FindTorrent (hash) != torrent)
+					return;
+				const bool applyResume = resumeBitfield.has_value () && !torrent->IsComplete ();
+				bool verify = hasPresentFiles && torrent->RequestLocalVerificationForExistingFiles (presentFiles) != 0;
+				if (applyResume)
+				{
+					if (torrent->IsBitfieldValid (*resumeBitfield))
+					{
+						torrent->ApplyBitfield (*resumeBitfield);
+						torrent->RequestLocalVerification (false);
+						verify = true;
+					}
+					else
+					{
+						LogPrint (eLogWarning, "TorrentsTunnel: Ignoring invalid resume bitfield");
+						boost::asio::post (tunnel->GetDiskIOService (),
+							[owner, relativeResume, hash, instance = std::weak_ptr<Torrent> (torrent)] ()
+							{
+								auto active = owner.lock ();
+								auto current = instance.lock ();
+								if (!active || !current || active->m_Stopping || current->IsRemoved ()
+									|| active->FindTorrent (hash) != current) return;
+								std::string removeError;
+								if (active->m_StorageWorker)
+									(void)active->m_StorageWorker->RemoveMetadata (relativeResume, removeError);
+								else if (!RemoveFileNoFollow (active->m_TorrentsDir, relativeResume, removeError))
+									LogPrint (eLogWarning,
+										"TorrentsTunnel: Can't remove invalid resume file: ", removeError);
+							});
+					}
+				}
+				if (verify) tunnel->ScheduleLocalVerification (torrent);
+			});
 	}
 
 	void TorrentsTunnel::LoadTorrentAdminState (const std::shared_ptr<Torrent> & torrent)

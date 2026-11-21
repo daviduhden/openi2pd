@@ -292,6 +292,15 @@ function(require_runtime_order path begin end)
   endforeach()
 endfunction()
 
+require_runtime_order("libi2pd_client/TorrentsTunnel.cpp"
+  "void TorrentsTunnel::InitTorrentFiles ("
+  "void TorrentsTunnel::LoadTorrentAdminState ("
+  "boost::asio::post (GetService (),"
+  "tunnel->FindTorrent (hash) != torrent"
+  "RequestLocalVerificationForExistingFiles (presentFiles)"
+  "ApplyBitfield (*resumeBitfield)"
+  "if (verify) tunnel->ScheduleLocalVerification (torrent)")
+
 require_runtime_order("privsep/Channel.cpp"
   "if (received == 0)" "if (++emptyRecords > 8)"
   "if (receivedFd >= 0)" "peer closed the channel"
