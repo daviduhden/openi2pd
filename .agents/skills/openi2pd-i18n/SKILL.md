@@ -293,3 +293,8 @@ AGENTS.md `Tracking states` value and state which validations were not run.
 - [Android Java 25](../../../docs/android-java25.md)
 - [C++23 migration](../../../docs/cpp23-migration.md)
 - [Testing matrix](../../../docs/testing.md)
+
+When converting catalog patterns to Perl extended mode, keep literal
+whitespace inside the quoted-fragment character class. Capture the key and
+value fragments before nested matching and review both singular and plural
+parsers against the existing maintenance fixtures.

@@ -19,6 +19,7 @@
 use strict;
 use warnings;
 use 5.016;
+use Carp qw(croak);
 use Getopt::Long qw(GetOptions);
 use File::Spec;
 use File::Basename qw(dirname);
@@ -65,10 +66,12 @@ sub usage {
 
 sub read_file {
     my ($path) = @_;
-    open my $fh, '<:raw', $path or die "open $path: $!\n";
+    open my $fh, '<:raw', $path or croak "open $path: $!";
     local $/ = undef;
+    local $! = 0;
     my $text = <$fh>;
-    close $fh;
+    croak "read $path: $!" if $!;
+    close $fh or croak "close $path: $!";
     return $text // '';
 }
 
@@ -95,15 +98,16 @@ sub parse_strings {
     $end = length($text) if $end < 0;
     my $block = substr( $text, $start, $end - $start );
     my %strings;
-    my $literal_run = qr/((?:"(?:[^"\\]|\\.)*"\s*)+)/;
-    while ( $block =~ /\{\s*$literal_run\s*,\s*$literal_run\s*\}/g ) {
+    my $literal = qr/ "(?: [^"\\] | \\. )*" /x;
+    my $literal_run = qr/ ( (?: $literal \s* )+ ) /x;
+    while ( $block =~ / \{ \s* $literal_run \s* , \s* $literal_run \s* \} /gx ) {
 
         # A nested match below resets $1/$2, so snapshot both literal
         # runs before extracting the individual string fragments from
         # them.
         my ( $key_run, $value_run ) = ( $1, $2 );
-        my @key_parts   = $key_run   =~ /"((?:[^"\\]|\\.)*)"/g;
-        my @value_parts = $value_run =~ /"((?:[^"\\]|\\.)*)"/g;
+        my @key_parts   = $key_run   =~ / " ( (?: [^"\\] | \\. )* ) " /gx;
+        my @value_parts = $value_run =~ / " ( (?: [^"\\] | \\. )* ) " /gx;
         my ( $key, $value ) = (
             unescape( join( '', @key_parts ) ),
             unescape( join( '', @value_parts ) )
@@ -124,11 +128,12 @@ sub parse_plurals {
     my $end   = index( $block, '};' );
     $block = substr( $block, 0, $end + 2 ) if $end >= 0;
     my %plurals;
-    while ( $block =~ /\{\s*"((?:[^"\\]|\\.)*)"\s*,\s*\{([^}]*)\}\s*\}/g ) {
+    my $quoted_text = qr/ " ( (?: [^"\\] | \\. )* ) " /x;
+    while ( $block =~ / \{ \s* $quoted_text \s* , \s* \{ ([^}]*) \} \s* \} /gx ) {
         my $key = unescape($1);
         my @forms;
         my $list = $2;
-        while ( $list =~ /"((?:[^"\\]|\\.)*)"/g ) {
+        while ( $list =~ / $quoted_text /gx ) {
             push @forms, unescape($1);
         }
         fail("duplicate plural key: $key") if exists $plurals{$key};
