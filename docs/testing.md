@@ -1107,3 +1107,14 @@ authority rejection. No new target or timeout change is needed: existing
 common/security-memory and focused Windows selections include both. These
 expanded controls are Pending CI compilation and Pending CI tests; the
 earlier 4e6aed8d success does not cover the new branches.
+
+### Performance comparison proposal
+
+Use a fixed synthetic workload and disclose the compiler, provider,
+hardware and configuration for every comparison. For NTCP2, sample
+established-session occupancy and owner-loop latency with separate idle
+and active connections. For torrents, sample list/detail snapshot latency
+and payload size at fixed counts, with and without concurrent lookups.
+Use a warm-up and preserve individual measurements and workload inputs.
+Do not impose a shared-runner latency threshold until the variance is
+known. The baseline and timing harness are pending.

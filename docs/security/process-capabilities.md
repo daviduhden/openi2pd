@@ -407,3 +407,17 @@ Landlock headers produce an explicit sandbox-installation error. They never
 convert requested confinement into success. UDP rights remain conditional on
 available build-header declarations. Old/new header and kernel combinations
 are pending manual CI; see [the static build audit](../static-build-audit.md).
+
+### Core write migration inventory
+
+The current core role still has external networking and persistence.
+Track one artifact family at a time through the existing scoped writer
+seams. RouterContext fixed files, RouterInfo artifacts and profile writes
+already have delegation paths under the applicable configuration. Startup
+reads and writes through the legacy path still need separate accounting.
+Address-book hosts, subscriptions, tombstones and source-index artifacts
+continue to use core-side AtomicWrite in AddressBook.cpp. Torrent state
+and payload each have distinct worker or broker boundaries with separate
+legacy paths. Keep these scopes separate when specifying the next typed
+worker operations; the existing storage role does not authorize arbitrary
+paths. Validate denied writes and restart behavior before changing a default.

@@ -2486,7 +2486,10 @@ compilation and Pending CI tests.
 - [ ] **[TORRENT-013]** Reject wrong element types in bencoded string lists.
   - Priority P1; Status Implemented / static; Pending CI compilation; Pending CI tests. `ParseStringList` rejects a complete list when any item is not a byte string rather than silently omitting it. Prepared regressions cover mixed metainfo paths, bencode lists and DHT `values`; compatibility with peers sending invalid mixed lists remains pending CI.
 - [ ] **[CONC-017]** Bound and close accepted torrent RPC sessions.
-  - Priority P0; Status Pending. The loopback listener in `TorrentsRPC.cpp` has no observed per-session deadline or global admission quota, the accept handler captures raw `this`, and `Stop()` does not explicitly close accepted sessions. Define owner/admission and shutdown barriers; prepare slow-client and stop-with-pending-callback regressions.
+  - Priority P0; Status Implemented / static; Pending CI tests. The listener
+    bounds sessions and engine work, fences dispatch across Stop, and arms
+    independent deadlines. The RPC regressions cover over-capacity admission,
+    listener restart and a request expiring before engine admission.
 - [ ] **[CONC-018]** Fence torrent magnet tracker publication across removal and shutdown.
   - Priority P1; Status Pending. `TorrentsTunnel::AddMagnet()` posts a raw-`this` tracker callback without the stop/membership checks used by other paths. Review owner lifetime and restart generation, and cover an undrained queue and removal before dispatch.
 - [ ] **[CONC-019]** Audit I2PControl self-thread shutdown lifetime.
@@ -2910,3 +2913,39 @@ AVD discovery and the Gradle property migration are Validated by CI.
 RT-38-01 KVM preflight and the TF-066 printf checker increment are
 Implemented / static; Pending CI tests. RT-087 remains CI failure.
 See [batch outcomes](docs/ci/TEST-FAILURES.md#38a3debd-manual-batch).
+
+## Approved architecture audit implementation
+
+- P01: Implemented / static. Pending CI compilation and provider/vector
+  tests for fallible HKDF and Noise state publication.
+- P02/P11: Implemented / static for the RPC handoff, capability reporting
+  and atomic tracker admission. Pending CI tests for pre-admission expiry,
+  invalid URLs and registry-capacity refusal.
+- P03: CI failure. RT-087 still needs attributable Windows initializer
+  evidence. Keep the contained diagnostic and sandbox boundary.
+- P04: Partially implemented / static. Deferred verification and resume
+  cleanup check the live torrent instance. Existing-file observations
+  and the resume bitfield publish together before verification. File and
+  backend preparation still need a disk plan for both add paths.
+- P05: Pending. Design a broker creation transaction with owner/generation
+  binding, bounded result chunks and distinct provider/no-progress and
+  total hashing deadlines.
+- P06/P08: Implemented / static. Pending CI tests for the OpenBSD non-root
+  credential lane, JNI headers and the CheckJNI device lane.
+- P07: Partially implemented / static. Core write migration inventory
+  prepared; worker operations and platform enforcement remain pending.
+- P09/P10: Partially implemented / static. Build input records and Android
+  release manifest prepared. Debian and static package checksums and run
+  records are prepared. The opt-in GCC 13 and Clang 17/system OpenSSL 3.0 matrix
+  awaits CI tests. The exact lower-bound matrix and independent
+  attestations remain pending.
+- P12: Pending. Compare repeatable owner-thread costs and queue occupancy
+  before changing the scheduling or snapshot contract.
+- P13: Partially implemented / static. Perl diagnostic artifacts and
+  contributor discovery prepared. Private reporting remains disabled
+  in GitHub and needs a maintainer-selected reporting channel.
+- P14: Partially implemented / static. Prepared Android and shared
+  terminal fixtures. Pending CI tests and physical accessibility review.
+- P15: Partially implemented / static. Reference and historical-vector
+  provenance checks hardened. Full differential and live-peer evidence
+  remains pending for the pinned I2P Java reference.

@@ -3273,3 +3273,20 @@ configuration files and exact emulator listing before waiting on ADB.
 Android UI preflight must check KVM as the emulator's runner user before
 the native build, retain the acceleration report, and keep device access
 limited to the ephemeral job runner.
+
+For an Android JNI ABI comparison, treat the Java declarations, checked-in
+header, native definitions and emitted javac header as separate evidence.
+Source comparison belongs in static CI; executing CheckJNI requires the
+device lane and its result cannot be inferred from header agreement.
+
+An atomic tracker batch must stage tracker data and slot metadata together
+under the registry lock. Preserve stable slot IDs on rejection and keep a
+positive admission control after the capacity regression.
+
+Keep distribution toolchain evidence tied to explicit compiler and
+provider selection as well as the resolved package versions. Record the
+provider series covered separately from the exact version floor.
+
+A Clang compatibility claim must identify the C++ standard library.
+Distribution CI selects the GCC 13 install directory for Clang 17 and
+records the package versions. libc++ coverage requires its own evidence.

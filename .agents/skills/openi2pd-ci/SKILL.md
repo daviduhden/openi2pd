@@ -771,3 +771,19 @@ acceleration; keep the failure artifact even when instrumentation is skipped.
 After successful AVD discovery, distinguish an inaccessible KVM device
 from failed guest boot. Keep the bounded acceleration probe and its upload
 ahead of instrumentation, and grant access to the hosted job's runner user.
+
+For OpenBSD credential coverage, preserve the root CTest run and use a
+private throwaway account and test directory for the focused non-root
+run. Require both JUnit entries and reject whole-test skips. The test can
+still omit its supplementary-group-sensitive subsection; inspect that
+diagnostic before claiming coverage. Keep the standalone XML artifact.
+
+Keep distribution compatibility checks opt-in alongside the rolling
+compiler/provider matrix. Invoke the selected system compiler explicitly,
+verify OpenSSL configuration against the selected system binary, and
+retain package versions and JUnit. A patched OpenSSL 3.0.x run does not
+establish the exact 3.0.2 floor.
+
+Record the C++ standard library as part of a compiler-floor lane. The
+Clang 17 distribution lane deliberately selects the GCC 13 install
+directory instead of accepting whichever libstdc++ the runner detects.

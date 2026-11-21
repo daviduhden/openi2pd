@@ -379,3 +379,30 @@ helper. The prepared policy-free child treats developer warnings as errors
 without changing dependency/header diagnostics. Source tests that pass still
 require full log review; their native focused counts do not imply execution
 of the separate Java differential harness without its --binary operand.
+
+### Native package evidence
+
+The standard and static Debian jobs upload SHA256SUMS alongside the
+staged packages and a build-provenance.txt record with the source revision
+and run identity. Check the run result and revision before using these
+artifacts, then run sha256sum -c SHA256SUMS in the extracted directory.
+A failure-time upload can contain intermediate packages. The static job
+records the resolved Alpine and Debian image identities and uses those
+identities for its container commands. Package-index snapshots and
+independent release attestations remain pending.
+
+Select pinned_static_images on a manual packaging dispatch to use the
+reviewed Alpine and Debian digests from successful run 44946764807.
+Default dispatch still tests the moving tags. Rotate the pinned digests
+after reviewing and validating a refreshed build.
+
+### Distribution compiler compatibility
+
+The Linux workflow accepts linux_floor_toolchains on manual dispatch.
+The two Ubuntu 24.04 jobs exercise GCC 13 and Clang 17 with the system
+OpenSSL 3.0 series. Clang uses the installed GCC 13 standard library,
+so the compiler and standard library choices are explicit. Both jobs
+record installed package versions, build logs and CTest JUnit. Ubuntu
+security updates remain enabled. The exact OpenSSL 3.0.2 floor, native
+MSVC minimum, additional standard libraries and an immutable dependency
+snapshot remain separate.

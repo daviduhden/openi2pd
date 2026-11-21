@@ -8987,3 +8987,35 @@ AVD discovery and the Gradle property migration are Validated by CI.
 RT-38-01 KVM preflight and the TF-066 printf checker increment are
 Implemented / static; Pending CI tests. RT-087 remains CI failure.
 See [batch outcomes](docs/ci/TEST-FAILURES.md#38a3debd-manual-batch).
+
+## Approved architecture audit implementation
+
+Static increments prepare fallible HKDF/Noise publication, executor-bound
+torrent RPC, focused OpenBSD credential testing, generated JNI ABI
+comparison, CheckJNI, Android and terminal accessibility fixtures, Linux
+input provenance, an Android release manifest, and retained Perl findings.
+The matching manual CI jobs have not executed this working tree.
+See TODO for incomplete proposals and accepted scope.
+
+### Tracker admission and package provenance follow-up
+
+P02 now validates tracker batches before committing both registry tables.
+A capacity regression rejects a two-entry batch with one slot free and
+then admits a singleton. P09/P10 add Debian package checksums, run records
+and an opt-in static image pin derived from successful packaging run
+44946764807. All changes are Implemented / static; Pending CI tests.
+
+### Torrent initialization and distribution toolchain follow-up
+
+P04 applies existing-file and resume observations in one instance-checked
+owner callback before scheduling verification. The ordered source guard
+is prepared. P09 adds an opt-in Ubuntu GCC 13/OpenSSL 3.0 job with exact
+package evidence and an opt-in contract. Pending CI tests for both.
+
+### Clang 17 compatibility follow-up
+
+The optional system OpenSSL 3.0 matrix now includes Clang 17 with the
+explicit GCC 13 standard library. Both variants keep independent
+artifacts. Pending CI tests. CONC-017 tracking now reflects the bounded
+RPC listener and its prepared regressions instead of the old raw-owner
+description.

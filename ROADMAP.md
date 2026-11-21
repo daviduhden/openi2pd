@@ -2687,3 +2687,28 @@ AVD discovery and the Gradle property migration are Validated by CI.
 RT-38-01 KVM preflight and the TF-066 printf checker increment are
 Implemented / static; Pending CI tests. RT-087 remains CI failure.
 See [batch outcomes](docs/ci/TEST-FAILURES.md#38a3debd-manual-batch).
+
+## Approved architecture audit increments
+
+First validate explicit crypto failure handling and asynchronous torrent
+RPC on the published revision containing those changes. Independently
+validate generated JNI headers, the Android UI fixture and non-root
+OpenBSD credentials. Use the retained reports to advance the Windows
+initializer investigation and Perl policy cleanup.
+
+Keep storage authority migration behind typed operations and evidence
+from negative platform tests. Design bounded SAF creation-result transfer
+before moving expensive I/O. Build provenance records are the first
+publication increment; immutable minimum toolchains, final native package
+manifests and independent verification remain separate work.
+
+Tracker admission now includes capacity rollback coverage. Validate the
+opt-in static image pins and SHA256SUMS in the manual packaging workflow.
+A pinned base image does not freeze the package indexes used inside it.
+
+Validate the combined torrent initialization publication and the opt-in
+GCC 13/OpenSSL 3.0 job in manual CI. Retain the rolling jobs and the
+separate exact-minimum compatibility work.
+
+Run both distribution compiler variants before closing their coverage
+items. Exact MSVC, libc++ and lower-bound OpenSSL evidence remain separate.
