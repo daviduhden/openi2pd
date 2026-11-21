@@ -1785,3 +1785,22 @@ TF-066 follow-up: the Android Javadoc reader now checks open/read/close
 separately and treats an empty regular source as EOF. Its empty-input
 regression is prepared in the maintenance suite. Pending CI tests; this
 addresses one diagnostic from the published batch.
+
+## 36ae883e manual batch
+
+The metadata inventory contains 625 runs and 89 SHAs, with 242 successful,
+316 failed and 67 cancelled. The ten exact runs on
+`36ae883ea40059ed55fc653e23845df0a080a2e9` produced seven workflow
+successes and three failures (Android API 29 RT-36-01, MSVC RT-087 and
+optional Perl quality TF-066). MSVC passed 35/36. Four Linux
+compiler/provider jobs and three sanitizer jobs passed 279 selections
+each. The instrumented TSan probe and 15 bounded fuzz cases passed.
+OpenBSD had three skips among 274 selections. Android arm64 passed and
+production signing was skipped.
+
+[Perl quality job 136916729552](https://github.com/daviduhden/openi2pd/actions/runs/44927502209/job/136916729552)
+passed Test::More and failed Perl::Critic with 953 newline-delimited records.
+Earlier concatenated output counts are not comparable. The catalog checker
+now checks source I/O and uses extended regex formatting for singular and
+plural pattern families, preserving captured literals. Existing maintenance
+fixtures cover escaped newlines and duplicate plurals. Pending CI tests.

@@ -2509,3 +2509,11 @@ and the TODO scan requires tool availability while preserving output after
 a generator failure. Doxygen did not run. Pending CI tests. The four Linux
 GCC/Clang provider jobs, OpenBSD, MSVC, MSYS2 and both Android native builds
 passed compilation in this batch.
+
+## 36ae883e build and documentation evidence
+
+The latest ten-run batch reached native compilation and tests across the
+four Linux compiler/provider jobs, OpenBSD, Windows and Android. No new
+compile or link blocker was found. CE-7F-01 is validated by
+[documentation job 136916729540](https://github.com/daviduhden/openi2pd/actions/runs/44927502209/job/136916729540),
+which installed both tools, ran Doxygen and collected source TODOs.

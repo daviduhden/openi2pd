@@ -3029,3 +3029,25 @@ failure and typed child exit 3221225794, from image SHA-256
 The separate conhost failure still lacks a causal link. PageHeap also
 reported supervisor failure. The unpublished collector classification
 change remains pending remote validation.
+
+## 36ae883e Android AVD discovery and Windows probe
+
+RT-36-01. [Android API 29 job](https://github.com/daviduhden/openi2pd/actions/runs/44927502281/job/136916729758)
+on `36ae883ea40059ed55fc653e23845df0a080a2e9` built x86_64 JNI and reached
+the emulator. Artifact 14716358553 contains `emulator.log` and
+`logcat.txt`. Emulator 37.3.10.0 exited 1 with
+`Unknown AVD name [openi2pd-api29]` and a missing discovery INI. The
+collector timed out as designed and the artifacts uploaded. The exact
+directory chosen by the previous producer was not logged. The local
+workflow now shares a runner-local ANDROID_AVD_HOME and checks both
+configuration files and the emulator's own listing before launch.
+Pending CI tests. See [Android SDK environment variables](https://developer.android.com/tools/variables).
+
+[MSVC job 136916728982](https://github.com/daviduhden/openi2pd/actions/runs/44927502074/job/136916728982)
+still fails RT-087 before authentication. The collector now reports
+`contained startup probe child exited 3221225794`, validating the
+classification change. The supervisor fixture and PageHeap diagnostic
+still fail. Artifact 14716379563 records KERNELBASE DLL_PROCESS_ATTACH
+failure for diagnostic image SHA-256
+`B6CB0929DAC172EA4DB8567A05C1E6E151BE87C358ECEEB091E69FB0833FAE76`.
+The internal operation responsible remains unresolved.

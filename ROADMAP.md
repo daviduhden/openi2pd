@@ -2672,3 +2672,11 @@ See [the batch outcome](docs/ci/TEST-FAILURES.md#7f563d3a-manual-batch).
 Android cancellation evidence confirms ADB discovery exit 124 and an
 independent logcat stall. The startup liveness and serial guard and the
 Javadoc empty-input regression are Implemented / static; Pending CI tests.
+
+## 36ae883e manual CI follow-up
+
+CE-7F-01 and the Windows diagnostic classification are Validated by CI.
+RT-087 remains CI failure. RT-36-01, CW-36-01 and the TF-066 catalog-checker
+increment are Implemented / static; Pending CI tests. API 29 instrumentation,
+Perl quality and full Windows worker initialization remain open.
+See [batch outcomes](docs/ci/TEST-FAILURES.md#36ae883e-manual-batch).
