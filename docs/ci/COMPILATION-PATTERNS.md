@@ -618,3 +618,9 @@ Translate reported synthetic property setters to explicit assignment.
 Search sibling Gradle sources for equivalent settings and update exact
 source guards with the DSL. Keep real AGP method calls intact. Attribute
 dependency deprecations from a call stack before editing dependencies.
+
+### Check a device as the consuming user
+
+When a build prepares a device-backed integration test, verify both the
+device node permissions and the tool's ability to use it under the same
+runner identity. A visible node alone does not establish device access.

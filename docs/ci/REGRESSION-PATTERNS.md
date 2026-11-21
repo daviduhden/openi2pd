@@ -1006,3 +1006,11 @@ the result. Check both generated AVD files and the emulator's exact listing
 using the same explicit lookup directory, before waiting for ADB. The
 maintenance fixture removes the consumer check independently of the
 existing timeout and liveness mutations. Pending CI tests.
+
+### RP-38-01 — Check emulator acceleration before the native build
+
+The workflow scan found one hosted Android KVM consumer. Grant access to
+its runner user and check accelerator status before building JNI.
+Retain the probe output independently of boot artifacts. The maintenance
+fixture replaces owner-only mode changes with a world-writable grant
+and expects rejection. Pending CI tests.

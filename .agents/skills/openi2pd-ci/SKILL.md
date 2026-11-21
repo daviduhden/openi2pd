@@ -767,3 +767,7 @@ After an AVD discovery failure, compare the avdmanager output directory
 with the emulator's lookup environment. Check generated files and
 emulator-side enumeration before diagnosing boot latency or hardware
 acceleration; keep the failure artifact even when instrumentation is skipped.
+
+After successful AVD discovery, distinguish an inaccessible KVM device
+from failed guest boot. Keep the bounded acceleration probe and its upload
+ahead of instrumentation, and grant access to the hosted job's runner user.

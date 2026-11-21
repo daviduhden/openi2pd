@@ -610,6 +610,15 @@ for my $file ( sort keys %input_gate ) {
 if ( exists $blocks_for{'build-android.yml'} ) {
     my $android = $blocks_for{'build-android.yml'};
     my $ui = $android->{'android-ui'} // '';
+    my ($acceleration) =
+      $ui =~ /^      - name: Verify KVM access for the Android UI runner\n(.*?)(?=^      - |\z)/ms;
+    push @errors, 'build-android.yml: Android UI must verify runner-only KVM access before building'
+      if !defined($acceleration)
+      || index( $ui, 'Verify KVM access' ) > index( $ui, 'Build Android x86_64' )
+      || index( $acceleration, q{sudo chown -- "$UID" /dev/kvm} ) < 0
+      || index( $acceleration, q{sudo chmod u+rw /dev/kvm} ) < 0
+      || index( $acceleration, q{timeout --kill-after=5s 15s "$ANDROID_HOME/emulator/emulator" -accel-check} ) < 0
+      || index( $acceleration, q{grep -Fxq '0' "$RUNNER_TEMP/emulator-acceleration.txt"} ) < 0;
     my ($boot) =
       $ui =~ /^      - name: Boot API 29 emulator\n(.*?)(?=^      - |\z)/ms;
     push @errors, 'build-android.yml: Android emulator startup must check process liveness'
@@ -630,7 +639,7 @@ if ( exists $blocks_for{'build-android.yml'} ) {
       if !defined($diagnostics)
       || $diagnostics !~ /^        timeout-minutes: 1$/m
       || index( $diagnostics, q{timeout --kill-after=5s 15s "$ADB" -s emulator-5554 logcat} ) < 0;
-    for my $report ( 'emulator.log', 'logcat.txt' ) {
+    for my $report ( 'emulator.log', 'logcat.txt', 'emulator-acceleration.txt' ) {
         push @errors, "build-android.yml: missing Android emulator diagnostic artifact $report"
           if index( $ui, q{${{ runner.temp }}/} . $report ) < 0;
     }

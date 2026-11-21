@@ -3269,3 +3269,7 @@ produce a misleading secondary source-scan failure.
 Before launching an Android virtual device in CI, verify that the producer
 and emulator share the same AVD lookup directory. Require the expected
 configuration files and exact emulator listing before waiting on ADB.
+
+Android UI preflight must check KVM as the emulator's runner user before
+the native build, retain the acceleration report, and keep device access
+limited to the ephemeral job runner.

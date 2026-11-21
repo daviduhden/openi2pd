@@ -309,6 +309,16 @@ sub workflow_crash_fixtures {
     my $android =
       File::Spec->catfile( $tmp, '.github', 'workflows', 'build-android.yml' );
     my $android_source = read_fixture_file($android);
+    my $kvm_access = q{sudo chmod u+rw /dev/kvm};
+    my $overbroad_kvm = $android_source;
+    ok( $overbroad_kvm =~ s/\Q$kvm_access\E/sudo chmod a+rw \/dev\/kvm/,
+        'fixture widens the KVM device permissions' );
+    write_file( $android, $overbroad_kvm );
+    ( $code, $out ) = run_checker($checker);
+    is( $code, 1, 'workflow checker rejects world-writable KVM setup' );
+    like( $out, qr/Android UI must verify runner-only KVM access/,
+        'diagnostic identifies the KVM access boundary' );
+    write_file( $android, $android_source );
     my $unbounded_adb = $android_source;
     ok(
         $unbounded_adb =~ s/timeout --kill-after=5s 15s ("\$ADB" -s emulator-5554 logcat)/$1/,

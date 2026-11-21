@@ -521,6 +521,24 @@ jobs:
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/30.0.16248370" >> "$GITHUB_ENV"
           test -x "$ANDROID_HOME/emulator/emulator"
           test -x "$ANDROID_HOME/platform-tools/adb"
+      - name: Verify KVM access for the Android UI runner
+        timeout-minutes: 1
+        shell: bash
+        run: |
+          if [[ ! -c /dev/kvm || -L /dev/kvm ]]; then
+            echo "The Android UI runner requires a KVM character device" >&2
+            exit 1
+          fi
+          if [[ ! -r /dev/kvm || ! -w /dev/kvm ]]; then
+            # Grant access to this ephemeral runner user.
+            sudo chown -- "$UID" /dev/kvm
+            sudo chmod u+rw /dev/kvm
+          fi
+          test -r /dev/kvm
+          test -w /dev/kvm
+          timeout --kill-after=5s 15s "$ANDROID_HOME/emulator/emulator" -accel-check |
+            tee "$RUNNER_TEMP/emulator-acceleration.txt"
+          grep -Fxq '0' "$RUNNER_TEMP/emulator-acceleration.txt"
       - name: Checkout vcpkg
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -655,5 +673,6 @@ jobs:
             android/app/build/test-results
             ${{ runner.temp }}/emulator.log
             ${{ runner.temp }}/logcat.txt
+            ${{ runner.temp }}/emulator-acceleration.txt
           if-no-files-found: warn
           retention-days: 7
