@@ -762,3 +762,8 @@ When a device discovery timeout is confirmed, bind ADB to the emulator's
 assigned port and watch its process through transport and boot readiness.
 For compile-free readers, check read and close independently. A slurp
 returning undef at EOF is a valid empty input where the checker allows it.
+
+After an AVD discovery failure, compare the avdmanager output directory
+with the emulator's lookup environment. Check generated files and
+emulator-side enumeration before diagnosing boot latency or hardware
+acceleration; keep the failure artifact even when instrumentation is skipped.

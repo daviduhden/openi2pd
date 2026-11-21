@@ -332,6 +332,16 @@ sub workflow_crash_fixtures {
     like( $out, qr/Android emulator startup must check process liveness/,
         'diagnostic identifies the missing startup liveness check' );
     write_file( $android, $android_source );
+    my $avd_listing = q{"$emulator" -list-avds};
+    my $unchecked_avd = $android_source;
+    ok( $unchecked_avd =~ s/\Q$avd_listing\E/true/,
+        'fixture removes emulator-side AVD discovery' );
+    write_file( $android, $unchecked_avd );
+    ( $code, $out ) = run_checker($checker);
+    is( $code, 1, 'workflow checker requires emulator-side AVD discovery' );
+    like( $out, qr/Android AVD producer and emulator must share a verified lookup directory/,
+        'diagnostic identifies the shared AVD lookup directory' );
+    write_file( $android, $android_source );
     my $package_guard = q{name='dev[.]uhden[.]i2pd'};
     my @package_checks = $android_source =~ /\Q$package_guard\E/g;
     is( scalar @package_checks, 2, 'signer guards both APKs' );

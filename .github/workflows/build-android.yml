@@ -565,9 +565,22 @@ jobs:
             AVDMANAGER="$(command -v avdmanager)"
           fi
           test -x "$AVDMANAGER"
+          # Give the AVD producer and consumer the same lookup directory.
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/openi2pd-avd"
+          mkdir -p "$ANDROID_AVD_HOME"
           echo "no" | "$AVDMANAGER" create avd --force --name openi2pd-api29 \
-            --package "system-images;android-29;google_apis;x86_64" --device pixel_2
-          "$ANDROID_HOME/emulator/emulator" -avd openi2pd-api29 -port 5554 -no-window -no-audio \
+            --package "system-images;android-29;google_apis;x86_64" --device pixel_2 \
+            --path "$ANDROID_AVD_HOME/openi2pd-api29.avd"
+          emulator="$ANDROID_HOME/emulator/emulator"
+          avds=$("$emulator" -list-avds)
+          if [[ ! -s "$ANDROID_AVD_HOME/openi2pd-api29.ini" ||
+                ! -s "$ANDROID_AVD_HOME/openi2pd-api29.avd/config.ini" ]] ||
+            ! grep -Fxq 'openi2pd-api29' <<<"$avds"; then
+            echo "The emulator cannot discover the API 29 AVD created by avdmanager" >&2
+            printf 'Visible AVDs:\n%s\n' "$avds" >&2
+            exit 1
+          fi
+          "$emulator" -avd openi2pd-api29 -port 5554 -no-window -no-audio \
             -no-boot-anim -no-snapshot -gpu swiftshader_indirect > "$RUNNER_TEMP/emulator.log" 2>&1 &
           emulator_pid=$!
           ADB="$ANDROID_HOME/platform-tools/adb"

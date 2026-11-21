@@ -3265,3 +3265,7 @@ A bounded Android emulator startup does not bound failure-time ADB reads.
 Keep independent diagnostic deadlines and upload the host log even when
 no device connects. A failed documentation tool installation must not
 produce a misleading secondary source-scan failure.
+
+Before launching an Android virtual device in CI, verify that the producer
+and emulator share the same AVD lookup directory. Require the expected
+configuration files and exact emulator listing before waiting on ADB.

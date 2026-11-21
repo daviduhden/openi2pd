@@ -998,3 +998,11 @@ The startup contract also checks emulator process liveness and serial
 binding. The maintenance suite removes the liveness check as a separate
 negative control. Pair state polling with observation of the process that
 must supply the state; retain early exit status and host-side logs.
+
+### RP-36-01 — Verify generated emulator configuration through its consumer
+
+Successful producer exit does not prove that a tool's consumer can locate
+the result. Check both generated AVD files and the emulator's exact listing
+using the same explicit lookup directory, before waiting for ADB. The
+maintenance fixture removes the consumer check independently of the
+existing timeout and liveness mutations. Pending CI tests.

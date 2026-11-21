@@ -618,6 +618,12 @@ if ( exists $blocks_for{'build-android.yml'} ) {
       || index( $boot, q{kill -0 "$emulator_pid"} ) < 0
       || index( $boot, q{-s emulator-5554 get-state} ) < 0
       || index( $boot, q{-s emulator-5554 shell getprop sys.boot_completed} ) < 0;
+    push @errors, 'build-android.yml: Android AVD producer and emulator must share a verified lookup directory'
+      if !defined($boot)
+      || index( $boot, q{export ANDROID_AVD_HOME="$RUNNER_TEMP/openi2pd-avd"} ) < 0
+      || index( $boot, q{--path "$ANDROID_AVD_HOME/openi2pd-api29.avd"} ) < 0
+      || index( $boot, q{"$emulator" -list-avds} ) < 0
+      || index( $boot, q{grep -Fxq 'openi2pd-api29'} ) < 0;
     my ($diagnostics) =
       $ui =~ /^      - name: Collect emulator diagnostics on failure\n(.*?)(?=^      - |\z)/ms;
     push @errors, 'build-android.yml: Android emulator diagnostics must be bounded'
