@@ -970,3 +970,31 @@ expired value differs from the never-expiring sentinel. Pair the expired
 entry with a never-expiring sibling to distinguish timeout selection from
 failure to rearm. Review zero-valued deadline assignments wherever timing
 fixtures drive production selection directly.
+
+## Audit follow-up for APK identity and diagnostic exit classification
+
+RP-A5-01 is a preventive finding. The signing workflow used a package
+regex before and after signing in which dots matched arbitrary bytes.
+Both checks now use literal separators. A source contract mutates each
+check independently in the existing manual maintenance suite.
+
+RP-A5-02 follows RT-087. Review debugger wrappers for a closed child
+status before interpreting the tool's exit: an armed debugger can
+propagate the parent's failure while collecting usable evidence. Preserve
+crash-marker precedence and a failing status in both cases. The manual
+maintenance suite has a mutation that removes the child classification.
+
+Both changes are implemented statically and pending CI.
+
+## RP-7F-01 — deadline for diagnostics after device failure
+
+The workflow sweep found one ADB logcat failure collector. Device diagnostic
+commands must have their own kill deadline even after a bounded startup.
+Retain the host-emulator log and any partial diagnostic output even if
+the device never responds. The maintenance fixture removes the logcat
+deadline and checks for the focused workflow diagnostic. Pending CI tests.
+
+The startup contract also checks emulator process liveness and serial
+binding. The maintenance suite removes the liveness check as a separate
+negative control. Pair state polling with observation of the process that
+must supply the state; retain early exit status and host-side logs.

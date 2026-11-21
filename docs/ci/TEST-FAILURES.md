@@ -1739,3 +1739,49 @@ Android passed 187 JVM tests. No sanitizer report accompanied the assertion.
 
 The inventory covers 595 runs at 86 SHAs, with 592 complete logs, one partial
 and two unavailable runs. Five retried historical job logs still return 404.
+
+## a5ebd51d batch outcomes
+
+Nine of ten workflows succeeded on `a5ebd51de0aedb04c0b3335a196a1af3502d987b`.
+MSVC passed 35 of 36 and retained RT-087; MSYS2 had one skip among its
+263 selections. TF-115 readiness and torrent admission passed on both
+Windows jobs, OpenBSD, the four Linux compiler/provider lanes and the
+three sanitizer lanes. Those sanitizer lanes reported 279 selections each;
+bounded fuzz selected 15 and the instrumented-OpenSSL TSan run selected
+one. No sanitizer finding was observed in those logs.
+[Validation run](https://github.com/daviduhden/openi2pd/actions/runs/44918645700)
+
+[OpenBSD run 44918642754](https://github.com/daviduhden/openi2pd/actions/runs/44918642754)
+reported three skips among 274 selections. Its JUnit artifact gives the
+reasons: worker identity and credentials require a non-root runner, and
+storage refuses root. A non-root storage run still skips until exec-free
+provisioning exists. Android arm64 passed JVM/Lint and D8/R8 checks;
+API 29 UI was skipped. The signing job and package ID change were added
+on later revisions with no runs in the retrieved history.
+
+## 7f563d3a manual batch
+
+Exact SHA `7f563d3a3c11a250c394a4a22a26cb972f403db7`. Seven workflows
+passed. Windows and Validation failed. Android was cancelled during
+collection of diagnostics. Android arm64 passed 187 JVM
+tests, API 29 instrumentation was skipped after RT-7F-01, and signing was
+not requested. MSVC passed 35/36 and retained RT-087. The four Linux
+OpenSSL jobs and three sanitizer jobs passed 279 selections each.
+OpenBSD completed 274 selections with three skips. All 15 bounded fuzz
+cases and the focused instrumented OpenSSL TSan case passed. The provider
+versions were OpenSSL 3.5.9, 4.1.0 and LibreSSL 4.4.0.
+
+[Validation Perl job](https://github.com/daviduhden/openi2pd/actions/runs/44923772633/job/136905276549)
+passed Test::More and failed Perl::Critic with 207 findings across seven
+files (TF-066). The profile now delimits records with a newline and
+retains enforcement. Existing formatting and complexity findings remain
+open. See CE-7F-01 for the independent documentation dependency failure.
+
+The paginated Actions inventory contains 615 accessible runs across 88
+SHAs (235 successful, 313 failed, 67 cancelled). These totals describe
+metadata coverage. Complete log review is recorded by exact run.
+
+TF-066 follow-up: the Android Javadoc reader now checks open/read/close
+separately and treats an empty regular source as EOF. Its empty-input
+regression is prepared in the maintenance suite. Pending CI tests; this
+addresses one diagnostic from the published batch.

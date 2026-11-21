@@ -595,3 +595,19 @@ than globally suppressing diagnostics or changing unrelated caller policies.
 Identical assertions across compilers and sanitizer configurations can
 indicate a shared fixture contract violation. Check the fixture inputs
 against production sentinels before changing a timer or sanitizer policy.
+
+## Android deprecation attribution
+
+Inspect detailed Gradle warnings in successful unit/Lint, documentation,
+APK, R8-probe and device steps before changing a plugin or language target.
+Use a per-invocation warning mode so the log contains the originating
+diagnostic. The aggregate Gradle 10 notice alone leaves attribution open.
+See [CW-A5-01](COMPILATION-WARNINGS.md#a5ebd51d-successful-job-diagnostics).
+
+## Documentation dependency evidence
+
+For auxiliary documentation jobs, classify package installation, generator
+execution and secondary scans independently. Gate consumers on the tool
+install outcome while allowing scans after a successful setup and a failed
+generator. Compare runner package indexes across siblings before
+attributing a missing package to an image-wide regression.

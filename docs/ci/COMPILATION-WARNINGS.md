@@ -1280,3 +1280,31 @@ were skipped; Perl quality was skipped, retaining 932 Critic findings and
 No new first-party native compiler warning was identified in the batch.
 Android run 44757371046, job 136360539543, retains two ChromeOS ABI warnings
 per variant. Debian DEP8 retains the external apt force-yes deprecation.
+
+## a5ebd51d successful-job diagnostics
+
+CW-A5-01: [Android arm64 job 136889600811](https://github.com/daviduhden/openi2pd/actions/runs/44918640081/job/136889600811)
+on `a5ebd51de0aedb04c0b3335a196a1af3502d987b` reported two
+`Missing x86_64 ABI support for ChromeOS [ChromeOsAbiSupport]` warnings
+(`android/app/build.gradle:89,109`). The production lane targets arm64
+and the opt-in emulator lane uses x86_64. The same successful job emitted
+`The option setting 'android.builtInKotlin=false' is deprecated.` and the
+aggregate Gradle 10 incompatibility notice. Retain the Java 25 workaround
+and collect detailed warnings across both Android jobs using
+`--warning-mode all`. Pending CI evidence for attribution.
+
+No first-party C++ compiler warning was found in the recovered batch logs.
+Homebrew reported Landlock ABI 8 below its required ABI 10. MSYS2 reported
+an installer notice about terminating other programs. The OpenBSD VM
+reported SSH known-hosts setup messages. These are environment notices;
+check sandbox coverage independently of successful compilation.
+
+## 7f563d3a warning follow-up
+
+CW-A5-01 recurred on [Android arm64](https://github.com/daviduhden/openi2pd/actions/runs/44923749708/job/136905201907):
+both Lint variants reported ChromeOsAbiSupport, and Gradle again reported
+the built-in Kotlin workaround and Gradle 10 deprecation summary.
+Detailed warning mode was only in the local tree. Homebrew Landlock ABI
+notices recurred on Linux. No own native compiler warning was identified
+in the recovered logs. Windows and Android runtime evidence is tracked
+separately.

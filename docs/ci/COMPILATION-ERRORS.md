@@ -2485,3 +2485,27 @@ Pending CI tests. No native sanitizer or fuzzer test ran after the blocker.
 The five failing workflows reached tests. No new compile or link
 blocker was identified in the batch. See TF-115 in
 [the test inventory](TEST-FAILURES.md) for the affected jobs.
+
+## a5ebd51d build and link follow-up
+
+The ten-run batch on `a5ebd51de0aedb04c0b3335a196a1af3502d987b`
+contained no new compile or link blocker in its executed lanes. Linux
+[GCC/Clang with OpenSSL 3.5.9](https://github.com/daviduhden/openi2pd/actions/runs/44918640032)
+and [OpenSSL 4.1.0](https://github.com/daviduhden/openi2pd/actions/runs/44918640163)
+used GCC 16.2.0 and Clang 23.1.6. OpenBSD used Clang 22.1.6 and LibreSSL.
+The MSVC job compiled and subsequently failed at runtime (RT-087).
+The OpenSSL runs do not cover the 3.0.2 floor or the 4.0.x branch.
+
+## 7f563d3a documentation dependency failure
+
+CE-7F-01. [Validation source-docs job](https://github.com/daviduhden/openi2pd/actions/runs/44923772633/job/136905276735)
+on `7f563d3a3c11a250c394a4a22a26cb972f403db7` (Ubuntu 24.04)
+fetched only Microsoft APT metadata. APT returned 100 with
+`Unable to locate package doxygen` and `Unable to locate package ripgrep`.
+The unconditional TODO scan then failed with `rg: command not found`.
+The Perl sibling fetched Ubuntu archives, so the runner label alone cannot
+explain the missing indexes. Documentation now uses Homebrew for both tools
+and the TODO scan requires tool availability while preserving output after
+a generator failure. Doxygen did not run. Pending CI tests. The four Linux
+GCC/Clang provider jobs, OpenBSD, MSVC, MSYS2 and both Android native builds
+passed compilation in this batch.

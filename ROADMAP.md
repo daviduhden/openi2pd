@@ -2650,3 +2650,25 @@ The local identity and restored encrypted backup were verified. GitHub's
 main-only release environment is provisioned. The isolated workflow and
 `dev.uhden.i2pd` package change await the first published signing run and
 Developer Console registration. See [Android release signing](docs/android-release-signing.md).
+
+## Published a5ebd51d CI follow-up
+
+TF-115: Validated by CI on the native lanes that ran it. RT-087 remains
+CI failure; the exact artifact identifies the KERNELBASE attach phase,
+with the underlying condition unresolved. RP-A5-01 and RP-A5-02:
+Implemented / static; Pending CI tests. Android signing and API 29 device
+validation remain pending. OpenBSD identity and credentials need a non-root
+lane; storage remains blocked on exec-free provisioning. See
+[CI test outcomes](docs/ci/TEST-FAILURES.md#a5ebd51d-batch-outcomes).
+
+## 7f563d3a manual CI follow-up
+
+RT-7F-01 and CE-7F-01: bounded emulator diagnostics and documentation tool
+setup are Implemented / static; Pending CI tests. Emulator startup and
+RT-087 initializer attribution remain open. The optional Perl quality lane
+still fails TF-066; newline-delimited diagnostics are prepared.
+See [the batch outcome](docs/ci/TEST-FAILURES.md#7f563d3a-manual-batch).
+
+Android cancellation evidence confirms ADB discovery exit 124 and an
+independent logcat stall. The startup liveness and serial guard and the
+Javadoc empty-input regression are Implemented / static; Pending CI tests.

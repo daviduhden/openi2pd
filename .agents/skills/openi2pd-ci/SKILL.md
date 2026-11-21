@@ -741,3 +741,24 @@ Record the exact AGENTS.md `Tracking states` value and state which validations w
 - [CI policy](../../../docs/ci.md)
 - [Testing plan](../../../docs/testing.md)
 - [Global policy](../../../AGENTS.md)
+
+### APK identity and startup diagnostics
+
+The workflow source guard checks both signing steps separately for literal
+package separators. Mutate one guard at a time in the maintenance fixture
+so a valid check in the other step cannot satisfy it. For Windows CDB
+evidence, correlate the closed probe's console status record with the
+loader transcript and image identity before interpreting the debugger exit.
+
+### Failed device and documentation jobs
+
+Inspect step timestamps and completed sibling logs when a whole run is
+still active. Treat a log endpoint that has not produced a job archive as
+an evidence gap. For a failed emulator, retain the host log and bound ADB
+diagnostics separately. For source docs, gate the TODO scan on successful
+tool setup and allow it to run after the generator fails.
+
+When a device discovery timeout is confirmed, bind ADB to the emulator's
+assigned port and watch its process through transport and boot readiness.
+For compile-free readers, check read and close independently. A slurp
+returning undef at EOF is a valid empty input where the checker allows it.

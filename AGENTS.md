@@ -2105,8 +2105,9 @@ container role without a container, a container for a non-container role, or a
 persistent-write role without a delegated root must fail closed; never fall
 back silently to a restricted token.
 
-Spawn uses a suspended process with `CREATE_NO_WINDOW`, NUL std handles,
-`bInheritHandles=FALSE`, an explicit empty handle list, a computed attribute
+Spawn uses a suspended process with `CREATE_NO_WINDOW` and delegates only
+three inheritable NUL standard handles via the explicit handle list. This
+uses `bInheritHandles=TRUE` with the allowlist. Spawn also uses a computed attribute
 count, `PROC_THREAD_ATTRIBUTE_JOB_LIST` with a suspended fallback,
 `PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES` plus the LPAC all-applications
 opt-out, and Job Object memory/process/UI limits. Every failure terminates the
@@ -3254,3 +3255,13 @@ Android release signing is opt-in on main. The approved release environment
 belongs only to the isolated signer. Keep checkout, Gradle and repository
 code in the secret-free build job. Maintain the application ID
 `dev.uhden.i2pd` separately from the Java and JNI namespace.
+
+For Android signing, pin literal package separators independently in the
+unsigned and signed APK checks. For the closed Windows startup diagnostic,
+check observed child results after arming and exception evidence but before
+classifying a nonzero debugger exit. Keep both failure paths fatal.
+
+A bounded Android emulator startup does not bound failure-time ADB reads.
+Keep independent diagnostic deadlines and upload the host log even when
+no device connects. A failed documentation tool installation must not
+produce a misleading secondary source-scan failure.

@@ -2989,3 +2989,43 @@ initialization failure. The KERNELBASE load event now reports matching PDB
 symbols (0792E1E7A24BB52249313BF74137D2B11). Loader output still reports
 DLL_PROCESS_ATTACH failure. The specific failing internal operation remains
 unresolved. TF-115 is a separate fixture assertion.
+
+## a5ebd51d RT-087 loader-attach evidence
+
+[Windows run 44918642876, MSVC job 136889613502](https://github.com/daviduhden/openi2pd/actions/runs/44918642876/job/136889613502)
+on `a5ebd51de0aedb04c0b3335a196a1af3502d987b` failed the supervisor test
+before authentication (3221225794 / `0xC0000142`). Artifact
+`windows-msvc-ctest` (14714151152), `startup-probe/initializer.txt`,
+contains the arming marker and reports the KERNELBASE init routine failing
+during `DLL_PROCESS_ATTACH`, followed by KERNEL32 propagation. KERNELBASE
+10.0.20348.5866 has PDB 0792E1E7A24BB52249313BF74137D2B11; the diagnostic
+image SHA-256 is
+`BC6309ED593712C292031678B1A8DF187C864A47EB9AFC64F0731B8C89BE5F3D`.
+A separate conhost process exited `0xC0000022`; the evidence does not
+establish its causal role. Keep RT-087 open and preserve containment.
+
+The armed collector recorded the child's typed exit record and returned
+a nonzero status. The workflow previously reported only
+`startup probe debugger failed`. The local diagnostic change checks the
+closed child-result record before reporting a debugger exit failure.
+Pending CI tests; this change does not repair the initializer.
+
+## 7f563d3a runtime follow-up
+
+RT-7F-01. [Android API 29 job 136905201689](https://github.com/daviduhden/openi2pd/actions/runs/44923749708/job/136905201689)
+completed the x86_64 build. The recovered log reports exit 124 after the
+initial 180-second ADB wait. The collector printed `- waiting for device -`
+and stalled for another 26 minutes and 21 seconds until manual cancellation.
+The upload ran but found no UI report. Only the arm64 artifact (14715595126)
+exists, so the emulator's underlying startup failure remains open.
+The workflow now checks the emulator PID and its dedicated ADB serial in
+both startup phases, bounds failure collection and uploads the host log
+and partial logcat. Pending CI tests.
+
+[MSVC job 136905248139](https://github.com/daviduhden/openi2pd/actions/runs/44923763973/job/136905248139)
+retains RT-087. Artifact 14716285257 includes the armed KERNELBASE attach
+failure and typed child exit 3221225794, from image SHA-256
+`EF1B05C95162594AB0EB0EDB2FED3E7A3395A3B18AE55DF081094743F0DD792B`.
+The separate conhost failure still lacks a causal link. PageHeap also
+reported supervisor failure. The unpublished collector classification
+change remains pending remote validation.
