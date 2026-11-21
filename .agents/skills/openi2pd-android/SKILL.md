@@ -526,6 +526,12 @@ does not resolve intentional ABI coverage or AGP deprecation findings.
   require an engine torrent id, and the admin tracker verb still requires a
   positive id. `TorrentControl.single` and `Bulk.REMOVE_ALL*` are the typed
   builders for the torrent detail/session actions.
+- Metainfo creation still reads providers directly on the SAF worker. A
+  broker migration needs owner- and generation-bound creation/result tokens
+  and bounded result chunks, because an 8 MiB metainfo result cannot fit in
+  one Binder reply. Keep an overall creation deadline distinct from a stalled
+  provider operation. Whole-tree hashing cannot inherit the short watchdog or
+  client deadlines for a single payload read.
 
 - Torrent comments page through `TORRENT-DETAIL <tunnel> <id> [offset]
   [limit]` via `TorrentControl.commentPage`; offset 0/limit 16 keeps the
@@ -697,6 +703,14 @@ does not resolve intentional ABI coverage or AGP deprecation findings.
 - Instrumentation under `android/app/src/androidTest/` for navigation,
   lifecycle, SAF provider/cancellation, en/es/ru/zh-CN resources and JNI
   consistency; device execution stays a separate lane.
+- The JNI checker compares Java, checked-in declarations and C++ definitions
+  on receiver type, ordered parameters and return type. CI also compares
+  the debug JavaCompile JNI header. Keep Java types with erased JNI C
+  representation under explicit review and treat CheckJNI on the device as a
+  separate check of executed paths.
+- The API 29 UI contract measures compact dashboard touch targets at 200%
+  font scale and checks wide navigation geometry in both layout directions.
+  Keep physical TalkBack and rotation coverage separately tracked.
 - Android CI: `android/tools/java25-probe/check-config.sh`,
   `verify-java25.sh` (class-file 69, D8/R8 `--min-api 29`, DEX 039),
   `check-android-jni-symbols.pl` and `check-android-locales.pl`;

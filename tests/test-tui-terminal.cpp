@@ -226,6 +226,15 @@ static void TestColumnBudget ()
 	assert (text::FitLength (combining, 1) == 3);
 	assert (text::FitLength (combining, 2) == 3);
 
+	// Simulate repeated shrinking and growing of one localized row.
+	// The combining mark follows its base and the wide glyph is atomic.
+	const std::string_view mixed = "e\xCC\x81\xE4\xB8\xAD" "A";
+	assert (text::FitLength (mixed, 4) == 7);
+	assert (text::FitLength (mixed, 2) == 3);
+	assert (text::FitLength (mixed, 3) == 6);
+	assert (text::FitLength (mixed, 1) == 3);
+	assert (text::FitLength (mixed, 4) == 7);
+
 	// A malformed byte occupies one column, so a hostile sequence cannot
 	// stall the row by costing zero.
 	assert (text::FitLength ("\xC0\xAF", 1) == 1);

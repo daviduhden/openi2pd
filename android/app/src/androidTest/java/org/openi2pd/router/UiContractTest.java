@@ -26,6 +26,7 @@ import android.view.View;
 import android.widget.TextView;
 
 import androidx.core.view.ViewCompat;
+import androidx.test.annotation.UiThreadTest;
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 
@@ -115,6 +116,59 @@ public final class UiContractTest {
         View compact = inflate(R.layout.activity_main);
         assertNotNull(compact.findViewById(R.id.nav_bottom));
         assertNull(compact.findViewById(R.id.nav_rail));
+    }
+
+    @Test
+    @UiThreadTest
+    public void largeTextKeepsDashboardActionsReachable() {
+        Context base = ApplicationProvider.getApplicationContext();
+        Configuration configuration = new Configuration(base.getResources().getConfiguration());
+        configuration.fontScale = 2.0f;
+        configuration.screenWidthDp = 360;
+        configuration.smallestScreenWidthDp = 360;
+        Context context = new android.view.ContextThemeWrapper(
+                base.createConfigurationContext(configuration), R.style.Theme_OpenI2Pd);
+        View dashboard = LayoutInflater.from(context)
+                .inflate(R.layout.fragment_dashboard, null, false);
+        int target = context.getResources().getDimensionPixelSize(R.dimen.touch_target);
+        int width = Math.round(360 * context.getResources().getDisplayMetrics().density);
+        dashboard.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+
+        for (int id : new int[] {R.id.button_dashboard_logs, R.id.button_dashboard_settings,
+                     R.id.button_dashboard_reseed}) {
+            View action = dashboard.findViewById(id);
+            assertNotNull(action);
+            assertEquals(View.VISIBLE, action.getVisibility());
+            assertTrue(action.isFocusable());
+            assertTrue(action.getMeasuredHeight() >= target);
+            assertTrue(action.getMeasuredWidth() >= target);
+        }
+    }
+
+    @Test
+    @UiThreadTest
+    public void wideNavigationRailFollowsLayoutDirection() {
+        for (int direction : new int[] {View.LAYOUT_DIRECTION_LTR, View.LAYOUT_DIRECTION_RTL}) {
+            View root = inflateWide(R.layout.activity_main, 800, 600);
+            root.setLayoutDirection(direction);
+            float density = root.getResources().getDisplayMetrics().density;
+            int width = Math.round(800 * density);
+            int height = Math.round(600 * density);
+            root.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY));
+            root.layout(0, 0, width, height);
+
+            View rail = root.findViewById(R.id.nav_rail);
+            View content = root.findViewById(R.id.fragment_container);
+            assertNotNull(rail);
+            assertNotNull(content);
+            assertTrue(rail.getWidth() > 0);
+            assertTrue(content.getWidth() > 0);
+            assertTrue(direction == View.LAYOUT_DIRECTION_RTL
+                            ? content.getRight() <= rail.getLeft()
+                            : rail.getRight() <= content.getLeft());
+        }
     }
 
     @Test

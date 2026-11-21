@@ -298,3 +298,8 @@ Record the exact AGENTS.md `Tracking states` value and state which validations w
 - [TUI IPC design](../../../docs/tui-ipc.md)
 - [Windows TUI](../../../docs/TUI-WINDOWS.md)
 - [Global policy](../../../AGENTS.md)
+
+Exercise shrinking and growing the same mixed-width row against the shared
+column-budget helper. Include combining marks adjacent to wide glyphs so
+code-unit boundaries and exact column limits are independently checked.
+Platform render and keyboard behavior still need terminal evidence.
