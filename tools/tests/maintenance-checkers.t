@@ -306,6 +306,18 @@ sub workflow_crash_fixtures {
     my ( $code, $out ) = run_checker($checker);
     is( $code, 0,
         'current workflow crash commands expose code locations only' );
+    my $linux =
+      File::Spec->catfile( $tmp, '.github', 'workflows', 'build-linux.yml' );
+    my $floor_workflow_source = read_fixture_file($linux);
+    my $ungated_floor = $floor_workflow_source;
+    ok( $ungated_floor =~ s/inputs\.linux_floor_toolchains/true/,
+        'fixture removes the distribution toolchain opt-in' );
+    write_file( $linux, $ungated_floor );
+    ( $code, $out ) = run_checker($checker);
+    is( $code, 1, 'workflow checker requires an explicit toolchain opt-in' );
+    like( $out, qr/must stay gated on inputs\.linux_floor_toolchains/,
+        'diagnostic identifies the distribution toolchain gate' );
+    write_file( $linux, $floor_workflow_source );
     my $android =
       File::Spec->catfile( $tmp, '.github', 'workflows', 'build-android.yml' );
     my $android_source = read_fixture_file($android);

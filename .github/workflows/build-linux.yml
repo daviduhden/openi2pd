@@ -14,6 +14,11 @@ name: Linux
 # when a maintainer explicitly dispatches the workflow.
 on:
   workflow_dispatch:
+    inputs:
+      linux_floor_toolchains:
+        description: Verify GCC 13 and Clang 17 with Ubuntu 24.04 system OpenSSL 3.0
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -23,6 +28,77 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  system-openssl-floor:
+    name: ${{ matrix.compiler }} and system OpenSSL 3.0
+    if: ${{ inputs.linux_floor_toolchains }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [gcc-13, clang-17]
+    env:
+      FLOOR_COMPILER: ${{ matrix.compiler }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Ubuntu development packages
+        shell: bash
+        run: |
+          packages=(gcc-13 g++-13 cmake ninja-build perl pkgconf openssl
+            libssl-dev libboost-program-options1.83-dev libboost-json1.83-dev
+            libboost-url1.83-dev libboost-container1.83-dev libncurses-dev
+            libminiupnpc-dev zlib1g-dev)
+          if [[ "$FLOOR_COMPILER" == clang-17 ]]; then packages+=(clang-17); fi
+          sudo apt-get -o APT::Update::Error-Mode=any update
+          sudo apt-get install -y --no-install-recommends -- "${packages[@]}"
+          dpkg-query -W -f='${Package}\t${Version}\n' "${packages[@]}" > floor-packages.tsv
+      - name: Build and test the distribution toolchain
+        shell: bash
+        run: |
+          version=$(/usr/bin/g++-13 -dumpfullversion)
+          [[ "$version" == 13.* ]]
+          compiler_options=()
+          case "$FLOOR_COMPILER" in
+            gcc-13) cc=/usr/bin/gcc-13; cxx=/usr/bin/g++-13 ;;
+            clang-17)
+              cc=/usr/bin/clang-17
+              cxx=/usr/bin/clang++-17
+              clang_version=$("$cxx" -dumpversion)
+              [[ "$clang_version" == 17.* ]]
+              gcc_runtime=$(/usr/bin/g++-13 -print-libgcc-file-name)
+              gcc_install_dir=$(dirname "$gcc_runtime")
+              test -d "$gcc_install_dir"
+              compiler_options+=("-DCMAKE_CXX_FLAGS=--gcc-install-dir=$gcc_install_dir")
+              ;;
+            *) exit 1 ;;
+          esac
+          openssl_version=$(/usr/bin/openssl version | awk '{print $2}')
+          [[ "$openssl_version" =~ ^3\.0\.[0-9]+$ ]]
+          /usr/bin/cmake -S build -B build-floor -G Ninja \
+            -DCMAKE_C_COMPILER="$cc" -DCMAKE_CXX_COMPILER="$cxx" "${compiler_options[@]}" \
+            -DCMAKE_MAKE_PROGRAM=/usr/bin/ninja -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_TESTING=ON -DI2PD_REQUIRE_PERL=ON -DI2PD_BUILD_TUI=ON \
+            -DOPENSSL_ROOT_DIR=/usr -DI2PD_OPENSSL_EXPECT=OpenSSL \
+            -DI2PD_OPENSSL_EXPECT_VERSION="$openssl_version" 2>&1 | tee floor-configure.log
+          /usr/bin/cmake --build build-floor --parallel 2 2>&1 | tee floor-build.log
+          /usr/bin/ctest --test-dir build-floor -j 2 --output-on-failure \
+            --no-tests=error --output-junit "$PWD/floor-ctest.xml"
+      - name: Upload distribution toolchain evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: ${{ matrix.compiler }}-system-openssl-evidence
+          path: |
+            floor-packages.tsv
+            floor-configure.log
+            floor-build.log
+            floor-ctest.xml
+            build-floor/Testing
+          if-no-files-found: warn
+          retention-days: 7
+
   install-components:
     name: Install components and consumer package
     runs-on: ubuntu-24.04

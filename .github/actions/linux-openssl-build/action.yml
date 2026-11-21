@@ -84,6 +84,22 @@ runs:
         # selected latest-of-branch version visible in the job log.
         echo "OpenSSL $binary_version from Homebrew $OPENSSL_FORMULA"
 
+    - name: Record build input versions
+      shell: bash
+      env:
+        CXX_INPUT: ${{ inputs.cxx }}
+      run: |
+        set -euo pipefail
+        {
+          printf 'revision=%s\nrun_id=%s\nrun_attempt=%s\n' \
+            "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT"
+          printf 'runner_os=%s\nrunner_arch=%s\nrunner_image=%s\n' \
+            "$RUNNER_OS" "$RUNNER_ARCH" "${ImageVersion:-unavailable}"
+          "$CXX_INPUT" --version
+          "$OPENSSL_ROOT_DIR/bin/openssl" version
+          cmake --version
+        } > build-input-versions.txt
+
     - name: Build and run all CTest targets
       shell: bash
       env:
@@ -181,6 +197,7 @@ runs:
         path: |
           configure.log
           build.log
+          build-input-versions.txt
           build-output/CMakeCache.txt
           build-output/CMakeFiles/CMakeConfigureLog.yaml
           build-output/Testing

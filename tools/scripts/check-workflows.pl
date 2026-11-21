@@ -470,7 +470,7 @@ if ( defined $crypto_diagnostic ) {
 # checks, Perl quality, sanitizers and fuzzing). A job must live in its
 # owning workflow, and the former aggregate names must not return.
 my %split_jobs = (
-    'build-linux.yml'   => [qw(install-components interop)],
+    'build-linux.yml'   => [qw(install-components interop system-openssl-floor)],
     'build-android.yml' => [qw(android android-ui android-sign)],
     'validation.yml'    =>
       [qw(source-docs skills-static perl-quality sanitizers fuzz-smoke)],
@@ -589,6 +589,7 @@ if ( exists $blocks_for{'validation.yml'}{'sanitizers'} ) {
 # a Perl::Critic run on every dispatch is a cost regression, and an
 # accidental `if:` removal is otherwise invisible until the job starts.
 my %input_gate = (
+    'build-linux.yml'   => { 'system-openssl-floor' => 'linux_floor_toolchains' },
     'build-android.yml' => { 'android-ui' => 'android_ui', 'android-sign' => 'sign_release' },
     'validation.yml'    => { 'perl-quality' => 'perl_style' },
 );
@@ -1068,7 +1069,8 @@ silently disables a job or removes its gate;
 =item *
 
 the lanes are split by concern and the owning workflow is pinned for
-F<build-linux.yml> (C<install-components>, C<interop>), F<build-android.yml>
+F<build-linux.yml> (C<install-components>, C<interop>,
+C<system-openssl-floor>), F<build-android.yml>
 (C<android>, C<android-ui>) and F<validation.yml> (C<source-docs>,
 C<skills-static>, C<perl-quality>, C<sanitizers>, C<fuzz-smoke>). A pinned
 job that appears in another workflow fails, and F<build.yml>/F<fuzz.yml> must
