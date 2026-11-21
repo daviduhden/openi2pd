@@ -332,6 +332,23 @@ sub workflow_crash_fixtures {
     like( $out, qr/Android emulator startup must check process liveness/,
         'diagnostic identifies the missing startup liveness check' );
     write_file( $android, $android_source );
+    my $package_guard = q{name='dev[.]uhden[.]i2pd'};
+    my @package_checks = $android_source =~ /\Q$package_guard\E/g;
+    is( scalar @package_checks, 2, 'signer guards both APKs' );
+    for my $mutated_check ( 1 .. 2 ) {
+        my $candidate = $android_source;
+        my $seen = 0;
+        $candidate =~ s/\Q$package_guard\E/
+          ++$seen == $mutated_check ? q{name='dev.uhden.i2pd'} : $package_guard
+        /gex;
+        isnt( $candidate, $android_source, 'fixture widens one package match' );
+        write_file( $android, $candidate );
+        ( $code, $out ) = run_checker($checker);
+        is( $code, 1, 'workflow checker rejects wildcard package matching' );
+        like( $out, qr/exact APK package check missing/,
+            'diagnostic identifies the package check' );
+    }
+    write_file( $android, $android_source );
     for my $boundary (
         [
             '-DVCPKG_TARGET_TRIPLET=x64-android',

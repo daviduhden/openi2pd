@@ -363,7 +363,7 @@ jobs:
           apk=signing-input/openi2pd-release-unsigned.apk
           unzip -tq "$apk"
           badging=$("$tools/aapt2" dump badging "$apk")
-          grep -q "^package: name='dev.uhden.i2pd' versionCode='[0-9]\{1,\}'" <<<"$badging"
+          grep -Eq "^package: name='dev[.]uhden[.]i2pd' versionCode='[0-9]+'" <<<"$badging"
           grep -Fxq "sdkVersion:'29'" <<<"$badging"
           if grep -q '^application-debuggable' <<<"$badging"; then
             echo "Production APK is debuggable" >&2
@@ -428,7 +428,7 @@ jobs:
             exit 1
           fi
           badging=$("$tools/aapt2" dump badging "$apk")
-          grep -q "^package: name='dev.uhden.i2pd' versionCode='[0-9]\{1,\}'" <<<"$badging"
+          grep -Eq "^package: name='dev[.]uhden[.]i2pd' versionCode='[0-9]+'" <<<"$badging"
           grep -Fxq "sdkVersion:'29'" <<<"$badging"
           if grep -q '^application-debuggable' <<<"$badging"; then
             echo "Production APK is debuggable" >&2

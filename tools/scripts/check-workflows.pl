@@ -643,6 +643,17 @@ if ( exists $blocks_for{'build-android.yml'} ) {
     }
     push @errors, 'build-android.yml: signer must not run repository code'
       if $sign =~ /actions\/checkout|gradlew|uses:\s*\.\//;
+    my $package_check =
+      q{grep -Eq "^package: name='dev[.]uhden[.]i2pd' versionCode='[0-9]+'" <<<"$badging"};
+    for my $step (
+        'Inspect and align production APK',
+        'Verify production certificate and APK integrity'
+      )
+    {
+        my ($body) = $sign =~ /^      - name: \Q$step\E\n(.*?)(?=^      - |\z)/ms;
+        push @errors, "build-android.yml: exact APK package check missing in $step"
+          if !defined($body) || index( $body, $package_check ) < 0;
+    }
     for my $job ( keys %{$android} ) {
         next if $job eq 'android-sign';
         push @errors, "build-android.yml: signing credentials in $job"
