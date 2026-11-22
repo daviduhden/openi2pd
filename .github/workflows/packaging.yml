@@ -206,6 +206,9 @@ jobs:
           grep -Eq 'static(-pie)? linked' static-file.txt
           build-output/i2pd --version
           mkdir -p static-bin/i2pd-static-x86_64
+          # The host writes checksums after the root packaging container.
+          mkdir -p static-out
+          test -w static-out
           cp build-output/i2pd static-bin/i2pd-static-x86_64/i2pd
           version=$(sed -n 's/^#define I2PD_VERSION_MAJOR \([0-9]*\)$/\1/p' libi2pd/version.h)
           version="${version}.$(sed -n 's/^#define I2PD_VERSION_MINOR \([0-9]*\)$/\1/p' libi2pd/version.h)"
