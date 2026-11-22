@@ -220,6 +220,18 @@ my %maintained_module = map {
     $module => 1;
 } @perl_modules;
 
+sub source_modules {
+    my ($source) = @_;
+    # POD begins with a column-one directive and continues through =cut.
+    $source =~ s/^=[A-Za-z]\w*\b[^\n]*\n.*?(?:^=cut\b[^\n]*(?:\n|\z)|\z)//gms;
+    return $source =~ /^[ \t]*(?:use|require)\s+([A-Za-z_][A-Za-z0-9_:]*)/mg;
+}
+
+is_deeply(
+    [ source_modules("use strict;\n\n=head1 DESCRIPTION\n\nrequire explicit support.\n\n=cut\n\nrequire Carp;\n") ],
+    [qw(strict Carp)], 'module scan ignores POD and resumes after =cut'
+);
+
 my @dangerous = (
     [ qr/(?<![\w:])system\s*\(/,             'system invocation' ],
     [ qr/(?<![\w:])exec\s*\(/,               'exec invocation' ],
@@ -282,8 +294,7 @@ for my $relative (@scripts) {
         ok( -x $path, "$relative is executable" );
     }
 
-    while ( $text =~ /^\s*(?:use|require)\s+([A-Za-z_][A-Za-z0-9_:]*)/mg ) {
-        my $module = $1;
+    for my $module ( source_modules($text) ) {
         ok(
             $allowed_module{$module} || $maintained_module{$module},
             "$relative uses core or maintained module $module"
