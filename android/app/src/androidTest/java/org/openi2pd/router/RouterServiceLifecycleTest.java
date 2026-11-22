@@ -15,21 +15,22 @@
 
 package org.openi2pd.router;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import android.content.ComponentName;
 import android.content.Context;
+import android.content.ContextWrapper;
 import android.content.Intent;
 import android.os.IBinder;
-import android.os.SystemClock;
 
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.rule.ServiceTestRule;
 
-import org.junit.Assume;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -69,48 +70,68 @@ public final class RouterServiceLifecycleTest {
         serviceRule.unbindService();
     }
 
-    /*
-     * A boot broadcast must deliver the restore command, not an explicit
-     * start command: the persisted stop is terminal, so the service
-     * reconciles to "stay stopped" and stops itself again. The previous
-     * implementation sent {@code ACTION_START}, which persisted a
-     * running intent before the service saw it and resurrected a router
-     * the operator had stopped (or a drain whose deadline had passed).
-     *
-     * <p>Broadcast delivery is asynchronous, so the assertion polls for
-     * a bounded window instead of assuming the receiver already ran; it
-     * never starts the daemon on a correct build.</p>
-     */
+    /* Exercise the receiver callback without sending a protected broadcast. */
     @Test
     public void bootBroadcastNeverRestartsAStoppedRouter() {
         Context context = ApplicationProvider.getApplicationContext();
-        context.getSharedPreferences("router_state", Context.MODE_PRIVATE)
-                .edit()
-                .putBoolean("should_run", false)
-                .putString("run_phase", "stopped")
-                .putLong("graceful_deadline_epoch_ms", 0L)
-                .commit();
-
+        var state = context.getSharedPreferences("router_state", Context.MODE_PRIVATE);
+        var receiverContext = new ReceiverContext(context);
+        var boot = new Intent(Intent.ACTION_BOOT_COMPLETED);
+        var receiver = new BootUpReceiver();
+        boolean previousAutostart = AutoStartController.isEnabled(context);
         try {
-            context.sendBroadcast(new Intent(Intent.ACTION_BOOT_COMPLETED)
-                            .setComponent(new ComponentName(context, BootUpReceiver.class)));
-        } catch (SecurityException denied) {
-            // A platform that refuses to let the app send its own
-            // protected broadcast cannot exercise the receiver; the JVM
-            // matrix in BootResumePolicyTest still pins the rule.
-            Assume.assumeNoException("protected broadcast refused", denied);
+            assertTrue(AutoStartController.setEnabled(context, true, false));
+            assertTrue(state.edit()
+                               .putBoolean("should_run", false)
+                               .putString("run_phase", "stopped")
+                               .putLong("graceful_deadline_epoch_ms", 0L)
+                               .commit());
+            receiver.onReceive(receiverContext, boot);
+            assertNull("stopped router must not request service start", receiverContext.request);
+            assertFalse("the persisted run must stay stopped",
+                    RouterService.isStartRequested(context));
+            assertEquals("stopped", state.getString("run_phase", null));
+
+            // A running intent with the same enabled marker reaches the
+            // interceptor and carries the sticky-restore command.
+            assertTrue(state.edit()
+                               .putBoolean("should_run", true)
+                               .putString("run_phase", "running")
+                               .commit());
+            receiver.onReceive(receiverContext, boot);
+            assertNotNull("running intent must request service restore", receiverContext.request);
+            assertEquals(new ComponentName(context, RouterService.class),
+                    receiverContext.request.getComponent());
+            assertNull("restore must not carry an explicit start action",
+                    receiverContext.request.getAction());
+        } finally {
+            state.edit().putBoolean("should_run", false).putString("run_phase", "stopped").commit();
+            AutoStartController.setEnabled(context, previousAutostart, false);
+        }
+    }
+
+    private static final class ReceiverContext extends ContextWrapper {
+        private Intent request;
+
+        ReceiverContext(Context base) {
+            super(base);
         }
 
-        long deadline = SystemClock.elapsedRealtime() + 2_000L;
-        while (SystemClock.elapsedRealtime() < deadline) {
-            assertFalse("a boot broadcast must not request a run",
-                    RouterService.isStartRequested(context));
-            assertFalse(
-                    "a boot broadcast must not start the daemon", RouterService.isRouterRunning());
-            SystemClock.sleep(50L);
+        @Override
+        public Context getApplicationContext() {
+            return this;
         }
-        String phase = context.getSharedPreferences("router_state", Context.MODE_PRIVATE)
-                               .getString("run_phase", null);
-        assertTrue("the persisted stop must be unchanged, was " + phase, "stopped".equals(phase));
+
+        @Override
+        public ComponentName startForegroundService(Intent intent) {
+            return startService(intent);
+        }
+
+        @Override
+        public ComponentName startService(Intent intent) {
+            assertNull("receiver must request service start at most once", request);
+            request = new Intent(intent);
+            return intent.getComponent();
+        }
     }
 }

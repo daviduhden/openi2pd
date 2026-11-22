@@ -733,6 +733,14 @@ does not resolve intentional ABI coverage or AGP deprecation findings.
 - Tunnel service names are bounded opaque protocol tokens. A slash does not
   make a name a filesystem path; Java tests must match the native length and
   control-character predicate rather than rejecting path-like spelling.
+- JNI string conversion writes into owned storage only after construction.
+  Review member declaration order for initializer calls that mutate sibling
+  members. Device coverage must exercise valid short strings and a conversion
+  that requires heap storage, plus over-limit and malformed UTF-16 controls,
+  before inferring conversion correctness from a stopped-router result.
+- For a protected boot broadcast, invoke the receiver callback with an
+  intercepted service start and a positive restore control. This verifies
+  receiver policy on device without claiming Android framework delivery.
 
 ## Tracking
 
