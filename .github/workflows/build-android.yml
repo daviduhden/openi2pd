@@ -658,9 +658,12 @@ jobs:
           checkjni=$(timeout --kill-after=2s 10s "$ADB" -s emulator-5554 shell getprop debug.checkjni)
           test "$checkjni" = 1
       - name: Run UI and accessibility instrumentation tests
+        shell: bash
+        timeout-minutes: 32
         run: |
           cd android
-          ./gradlew :i2pd:connectedDebugAndroidTest --no-daemon --warning-mode all \
+          timeout --kill-after=15s 30m ./gradlew :i2pd:connectedDebugAndroidTest \
+            --no-daemon --warning-mode all --stacktrace \
             -Pi2pd.ndkVersion="$NDK_VERSION" \
             -Pi2pd.abis=x86_64 \
             -Pandroid.injected.build.abi=x86_64 \
@@ -680,6 +683,10 @@ jobs:
           if ! timeout --kill-after=5s 15s "$ADB" -s emulator-5554 logcat -d -v threadtime > "$RUNNER_TEMP/logcat.txt"; then
             echo "ADB logcat did not complete; retaining any partial output" >&2
           fi
+          if ! timeout --kill-after=3s 10s "$ADB" -s emulator-5554 shell dumpsys activity instrumentation \
+            > "$RUNNER_TEMP/instrumentation-state.txt"; then
+            echo "Instrumentation state collection did not complete" >&2
+          fi
       - name: Upload Android UI reports
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
@@ -692,5 +699,6 @@ jobs:
             ${{ runner.temp }}/emulator.log
             ${{ runner.temp }}/logcat.txt
             ${{ runner.temp }}/emulator-acceleration.txt
+            ${{ runner.temp }}/instrumentation-state.txt
           if-no-files-found: warn
           retention-days: 7

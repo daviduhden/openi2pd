@@ -640,7 +640,13 @@ if ( exists $blocks_for{'build-android.yml'} ) {
       if !defined($diagnostics)
       || $diagnostics !~ /^        timeout-minutes: 1$/m
       || index( $diagnostics, q{timeout --kill-after=5s 15s "$ADB" -s emulator-5554 logcat} ) < 0;
-    for my $report ( 'emulator.log', 'logcat.txt', 'emulator-acceleration.txt' ) {
+    my ($instrumentation) =
+      $ui =~ /^      - name: Run UI and accessibility instrumentation tests\n(.*?)(?=^      - |\z)/ms;
+    push @errors, 'build-android.yml: Android instrumentation needs a deadline before diagnostics'
+      if !defined($instrumentation)
+      || $instrumentation !~ /^        timeout-minutes: 32$/m
+      || index( $instrumentation, q{timeout --kill-after=15s 30m ./gradlew :i2pd:connectedDebugAndroidTest} ) < 0;
+    for my $report ( 'emulator.log', 'logcat.txt', 'emulator-acceleration.txt', 'instrumentation-state.txt' ) {
         push @errors, "build-android.yml: missing Android emulator diagnostic artifact $report"
           if index( $ui, q{${{ runner.temp }}/} . $report ) < 0;
     }

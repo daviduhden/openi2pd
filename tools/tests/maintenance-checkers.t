@@ -321,6 +321,15 @@ sub workflow_crash_fixtures {
     my $android =
       File::Spec->catfile( $tmp, '.github', 'workflows', 'build-android.yml' );
     my $android_source = read_fixture_file($android);
+    my $unbounded_instrumentation = $android_source;
+    ok( $unbounded_instrumentation =~ s/timeout --kill-after=15s 30m (?=\.\/gradlew)//,
+        'fixture removes the instrumentation command deadline' );
+    write_file( $android, $unbounded_instrumentation );
+    ( $code, $out ) = run_checker($checker);
+    is( $code, 1, 'workflow checker rejects unbounded instrumentation' );
+    like( $out, qr/Android instrumentation needs a deadline/,
+        'diagnostic identifies the instrumentation deadline' );
+    write_file( $android, $android_source );
     my $kvm_access = q{sudo chmod u+rw /dev/kvm};
     my $overbroad_kvm = $android_source;
     ok( $overbroad_kvm =~ s/\Q$kvm_access\E/sudo chmod a+rw \/dev\/kvm/,
