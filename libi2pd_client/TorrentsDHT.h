@@ -837,10 +837,16 @@ namespace torrents
 		std::unordered_map<i2p::data::IdentHash, uint64_t> m_FailedPeers; // peer -> failure time in monotonic seconds
 		DHTTokenStore m_IncomingTokens;
 		DHTRawFrameLimiter m_RawFrameLimiter;
-		// transactionID -> (ident, port, query, request info, monotonic time)
-		std::unordered_map<uint64_t,
-			std::tuple<i2p::data::IdentHash, uint16_t, KRPCQuery, std::shared_ptr<RequestInfo>, uint64_t>>
-			m_Queries;
+		// Service-thread state retained until reply, expiry or removal.
+		struct PendingQuery
+		{
+			i2p::data::IdentHash peer;
+			uint16_t port;
+			KRPCQuery query;
+			std::shared_ptr<RequestInfo> request;
+			uint64_t sentAtSeconds;
+		};
+		std::unordered_map<uint64_t, PendingQuery> m_Queries;
 		std::map<Torrent::InfoHash, std::shared_ptr<DHTTorrent>> m_Torrents;
 		PrivateInfoHashSet m_PrivateInfoHashes;
 		DHTQueryLimiter m_QueryLimiter;

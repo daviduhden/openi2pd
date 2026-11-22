@@ -1164,8 +1164,8 @@ namespace torrents
 		memcpy (&transaction, error.transactionID.data (), sizeof (transaction));
 		auto it = m_Queries.find (transaction);
 		if (it == m_Queries.end ()) return;
-		const auto query = std::get<2> (it->second);
-		const auto expectedPort = std::get<1> (it->second);
+		const auto query = it->second.query;
+		const auto expectedPort = it->second.port;
 		const auto queryPort = query == eKRPCQueryAnnouncePeer && expectedPort > 0
 			? static_cast<uint16_t> (expectedPort - 1)
 			: expectedPort;
@@ -1174,13 +1174,13 @@ namespace torrents
 		// A protocol error completes the request, but is not a successful
 		// ping/announce and must not promote routing or heard-from state.
 		auto completed = m_Queries.extract (it);
-		const auto & target = std::get<0> (completed.mapped ());
+		const auto & target = completed.mapped ().peer;
 		// An error answer means the peer cannot serve this query right now,
 		// so record it in the same bounded failure map a timeout uses before
 		// the lookup advances to the next candidate.
 		if (m_FailedPeers.contains (target) || m_FailedPeers.size () < MAX_DHT_FAILED_PEERS)
 			m_FailedPeers.insert_or_assign (target, i2p::util::GetMonotonicSeconds ());
-		auto info = std::get<3> (completed.mapped ());
+		auto info = completed.mapped ().request;
 		LogPrint (eLogDebug, "TorrentsDHT: KRPC error code ", error.code);
 		if (query == eKRPCQueryGetPeers)
 			SendNextGetPeersQuery (info);
@@ -1570,7 +1570,11 @@ namespace torrents
 		auto it = m_Queries.find (t);
 		if (it != m_Queries.end ())
 		{
-			const auto & [expectedIdent, expectedPort, expectedQuery, request, sent] = it->second;
+			const auto & pending = it->second;
+			const auto & expectedIdent = pending.peer;
+			const auto expectedPort = pending.port;
+			const auto expectedQuery = pending.query;
+			const auto & request = pending.request;
 			const uint16_t queryPort = expectedQuery == eKRPCQueryAnnouncePeer && expectedPort > 0
 				? static_cast<uint16_t> (expectedPort - 1)
 				: expectedPort;
@@ -1586,7 +1590,11 @@ namespace torrents
 			auto node = m_Queries.extract (it);
 			if (m_RoutingTable)
 			{
-				const auto & [ident, port, query, info, time] = node.mapped ();
+				const auto & completed = node.mapped ();
+				const auto & ident = completed.peer;
+				const auto port = completed.port;
+				const auto query = completed.query;
+				const auto & info = completed.request;
 				if (query != eKRPCQueryAnnouncePeer) // port is rport there
 					UpdateNode (std::make_shared<Node> (nodeID, ident, port));
 				switch (query)
@@ -1758,8 +1766,9 @@ namespace torrents
 		auto msg = CreateDictionary ({ { "a", arguments }, { "q", CreateByteString (KRPCQueryStr[query]) },
 			{ "t", CreateByteString (std::string_view ((const char *)&transactionID, sizeof (transactionID))) },
 			{ "y", CreateByteString ("q") } });
-		m_Queries.insert_or_assign (
-			transactionID, std::make_tuple (toIdent, toPort, query, info, i2p::util::GetMonotonicSeconds ()));
+		if (!m_Queries.try_emplace (transactionID,
+			PendingQuery { toIdent, toPort, query, std::move (info), i2p::util::GetMonotonicSeconds () }).second)
+			return;
 		if (isRaw)
 			SendRawDatagram (msg, toIdent, toPort);
 		else
@@ -2133,12 +2142,13 @@ namespace torrents
 			auto it = m_Queries.begin ();
 			while (it != m_Queries.end ())
 			{
-				if (ts > std::get<4> (it->second) + DHT_QUERY_EXPIRATION_TIME)
+				const auto & pending = it->second;
+				if (ts > pending.sentAtSeconds + DHT_QUERY_EXPIRATION_TIME)
 				{
-					if (m_FailedPeers.contains (std::get<0> (it->second))
+					if (m_FailedPeers.contains (pending.peer)
 						|| m_FailedPeers.size () < MAX_DHT_FAILED_PEERS)
-						m_FailedPeers.insert_or_assign (std::get<0> (it->second), ts);
-					switch (std::get<2> (it->second))
+						m_FailedPeers.insert_or_assign (pending.peer, ts);
+					switch (pending.query)
 					{
 					case eKRPCQueryPing:
 					{
@@ -2146,12 +2156,12 @@ namespace torrents
 						// the routing-table node so the heard-from window is
 						// checked against its node ID, not the peer hash.
 						auto node
-							= m_RoutingTable ? m_RoutingTable->FindNodeByPeer (std::get<0> (it->second)) : nullptr;
+							= m_RoutingTable ? m_RoutingTable->FindNodeByPeer (pending.peer) : nullptr;
 						if (node && !m_HeardFrom.contains (node->id)) m_RoutingTable->RemoveNodeByPeer (node->peer);
 						break;
 					}
-					case eKRPCQueryGetPeers: getpeers.push_back (std::get<3> (it->second)); break;
-					case eKRPCQueryFindNode: findnode.push_back (std::get<3> (it->second)); break;
+					case eKRPCQueryGetPeers: getpeers.push_back (pending.request); break;
+					case eKRPCQueryFindNode: findnode.push_back (pending.request); break;
 					default:;
 					}
 					it = m_Queries.erase (it);
@@ -2320,8 +2330,9 @@ namespace torrents
 		// ignored.
 		for (auto it = m_Queries.begin (); it != m_Queries.end ();)
 		{
-			const auto & request = std::get<3> (it->second);
-			if (std::get<2> (it->second) == eKRPCQueryGetPeers && request && request->torrent
+			const auto & pending = it->second;
+			const auto & request = pending.request;
+			if (pending.query == eKRPCQueryGetPeers && request && request->torrent
 				&& request->torrent->GetInfoHash () == infoHash)
 				it = m_Queries.erase (it);
 			else

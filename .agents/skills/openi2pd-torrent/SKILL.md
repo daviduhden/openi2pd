@@ -130,6 +130,13 @@ Do not let them edit, build or run tests.
 
 ## Known issues and decisions
 
+- A pending DHT query is a named record keyed by transaction ID. Clang 17
+  with libstdc++ 13 rejected the former tuple-valued insertion in the
+  standard library's piecewise construction path. Keep insert-only
+  admission before send and detach a completed record before continuing a
+  lookup that can rehash the table. Validate changes with the distribution
+  compiler lane and the existing DHT protocol regression.
+
 Tracker admission includes its deadline allocation/registration and later
 HTTP parameter, callable and stream-dispatch construction. Guard each
 transaction with the registry's exact non-reused authority, release on
