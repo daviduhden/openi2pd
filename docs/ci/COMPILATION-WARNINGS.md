@@ -1327,3 +1327,12 @@ and ChromeOS ABI notices remain. Linux dependency setup repeated the
 Homebrew Landlock capability warning. No native compiler warning was
 identified in the latest logs.
 [Android arm64 job](https://github.com/daviduhden/openi2pd/actions/runs/44930404273/job/136925561650)
+
+## 076ddcb7 compatibility warnings
+
+CW-076-01. [GCC 13 job 136983194711](https://github.com/daviduhden/openi2pd/actions/runs/44949202640/job/136983194711)
+reported CMP0057 unset at tools/test-tools-inventory.cmake:76. See
+TF-076-02 for the failed check and portable source correction. The
+Android arm64 Kotlin opt-out/ChromeOS notices persist. The UI job
+reported Java Unsafe use inside third-party protobuf-java 3.25.5.
+The warning does not identify the instrumentation stall.

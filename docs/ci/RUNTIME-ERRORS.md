@@ -3070,3 +3070,25 @@ exit. Windows worker initialization remains open.
 Exact Windows artifact 14718179557 identifies a KERNELBASE
 DLL_PROCESS_ATTACH failure in diagnostic image SHA-256
 `0408D7ECC561CF4C987D3299009D4B20E51B0D45ACA913D31403EC670523A3EC`.
+
+## 076ddcb7 Android instrumentation and Windows startup
+
+RT-076-01. [Android API 29 job 136993486046](https://github.com/daviduhden/openi2pd/actions/runs/44949202610/job/136993486046)
+booted and ran instrumentation. Its artifact shows the stopped-router
+administration assertion expected unavailable and got invalid; the next
+oversized-argument case never finished before cancellation. The prior
+14eb5283 Android run had the same progression. Static inspection found
+ScopedUtfChars calling its conversion with m_Value before that string
+was constructed. The constructor now converts after member construction.
+The exact blocked native frame is unavailable. Focused input/lifecycle
+regressions and a bounded instrumentation phase with retained ADB state
+are prepared. Pending CI tests.
+
+[MSVC job 136983196760](https://github.com/daviduhden/openi2pd/actions/runs/44949202869/job/136983196760)
+again reported RT-087 (3221225794 before worker authentication).
+The exact artifact for probe image SHA-256
+`C59905DC76600383DD91DDD870008991F7DD2099EF1CEE0E5D9E0299FF6CB5A3`
+reports KERNELBASE.DLL failing during DLL_PROCESS_ATTACH. A conhost
+process reported access denied nearby; causality and the failing internal
+operation remain unproven. The closed restricted-token probe also fails,
+so AppContainer is not established as necessary for the symptom.

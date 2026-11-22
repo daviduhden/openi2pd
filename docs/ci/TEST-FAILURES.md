@@ -1822,3 +1822,35 @@ the existing maintenance fixtures cover these semantics. Pending CI tests.
 
 Paginated Actions metadata covers 635 executions across 90 SHAs. Complete
 job-log evidence in this increment covers the ten executions above.
+
+## 076ddcb7 manual batch
+
+Paginated metadata covers 655 runs at 92 SHAs. For the ten exact
+076ddcb76e7c3318922e49abbaaf143216e2aa8e runs, two workflows succeeded,
+seven failed and Android was cancelled. OpenSSL instrumented TSan,
+component interop/install, Doxygen, bounded fuzz (15/15), Android arm64
+and generated JNI header comparison succeeded in their individual lanes.
+The sanitizer variants had one Perl portability failure each and no
+sanitizer report in the recovered logs. Windows retains RT-087. The new
+OpenBSD non-root phase did not run because the root suite failed first.
+
+TF-076-01. The module inventory regex read a POD sentence beginning
+`require explicit` in the JNI checker as an import. It failed across
+native OpenSSL 3/4, GCC 13, MSYS2, OpenBSD, sanitizer and optional Perl
+jobs. Inspect documentation boundaries before classifying a module
+as required. The scanner now ignores POD and has a fixture covering
+both ignored prose and a real require after =cut. Pending CI tests.
+[Validation Perl job](https://github.com/daviduhden/openi2pd/actions/runs/44949202546/job/136983194003)
+
+TF-076-02. The GCC 13 distribution lane ran tools/test-tools-inventory.cmake
+under older script-mode CMake, where unset CMP0057 rejected IN_LIST.
+Use list(FIND), matching the service checker. The existing inventory
+target validates this on the same lane. Pending CI tests.
+[Distribution job](https://github.com/daviduhden/openi2pd/actions/runs/44949202640/job/136983194711)
+
+TF-076-03. The static musl job built its Debian package but failed to
+write SHA256SUMS because the root packaging container created the
+host-mounted static-out directory. The runner now creates that directory
+before the container writes packages. This keeps checksums under runner
+authority. Pending CI tests.
+[Static package job](https://github.com/daviduhden/openi2pd/actions/runs/44949202814/job/136983194867)

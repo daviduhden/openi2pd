@@ -624,3 +624,11 @@ dependency deprecations from a call stack before editing dependencies.
 When a build prepares a device-backed integration test, verify both the
 device node permissions and the tool's ability to use it under the same
 runner identity. A visible node alone does not establish device access.
+
+### Distribution tuple construction and script-mode list operators
+
+For a diagnostic originating in tuple constraints, trace the insert
+operation and mapped type as well as the compiler and standard library
+pair. A named domain record avoids incidental nested tuple constraints
+while keeping the pending-query fields explicit. Separately, check
+script-mode CMake operators under the oldest exercised toolchain.

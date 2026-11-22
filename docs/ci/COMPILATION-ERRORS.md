@@ -2524,3 +2524,16 @@ No new compile or link blocker was identified in the ten exact-run logs.
 Linux with OpenSSL 3/4, OpenBSD, Windows, and Android arm64 and x86_64
 reached execution or post-build validation. The documentation lane passed.
 RT-38-01, RT-087 and TF-066 are separate runtime or quality results.
+
+## 076ddcb7 distribution compiler
+
+CE-076-01. [Clang 17 job 136983194493](https://github.com/daviduhden/openi2pd/actions/runs/44949202640/job/136983194493)
+on 076ddcb76e7c3318922e49abbaaf143216e2aa8e failed with
+`pack expansion contains parameter pack '_UTypes' that has a different
+length (1 vs. 5)` in libstdc++ 13 tuple construction, instantiated by
+TorrentsDHT::SendQueryMsg. Clang 17.0.6 paired with libstdc++ 13 and
+OpenSSL 3.0.13. The pending-query registry now uses a named record.
+Reply, error, timeout and removal paths use the same record. The sibling
+UDP tracker registry uses a different construction path. The original
+Clang 17 compile and existing DHT suite are the validation lane.
+Pending CI compilation and tests.

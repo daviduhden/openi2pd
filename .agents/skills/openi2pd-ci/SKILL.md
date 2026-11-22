@@ -787,3 +787,9 @@ establish the exact 3.0.2 floor.
 Record the C++ standard library as part of a compiler-floor lane. The
 Clang 17 distribution lane deliberately selects the GCC 13 install
 directory instead of accepting whichever libstdc++ the runner detects.
+
+Exclude POD from Perl import inventories and keep a verified source import
+after the documentation boundary. On a distro CMake failure inspect
+script-mode policy defaults. For bind-mounted package outputs, establish
+runner directory ownership before container execution when host-side
+checksums or provenance must be written.

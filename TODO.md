@@ -2949,3 +2949,10 @@ See [batch outcomes](docs/ci/TEST-FAILURES.md#38a3debd-manual-batch).
 - P15: Partially implemented / static. Reference and historical-vector
   provenance checks hardened. Full differential and live-peer evidence
   remains pending for the pinned I2P Java reference.
+
+## 076ddcb7 manual CI follow-up
+
+CE-076-01 and TF-076-01..03 corrections are Implemented / static; Pending
+CI tests. RT-076-01 fixes JNI conversion member lifetime and bounds the UI
+phase; exact completion evidence remains pending. RT-087 remains CI
+failure. See [batch outcomes](docs/ci/TEST-FAILURES.md#076ddcb7-manual-batch).

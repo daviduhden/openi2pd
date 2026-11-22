@@ -3290,3 +3290,8 @@ provider series covered separately from the exact version floor.
 A Clang compatibility claim must identify the C++ standard library.
 Distribution CI selects the GCC 13 install directory for Clang 17 and
 records the package versions. libc++ coverage requires its own evidence.
+
+Review JNI initializer calls that write through another member against
+the member declaration order. Add input controls that allocate storage
+and exercise both exact input caps and rejected input. Bound device
+instrumentation separately from the enclosing job so evidence can upload.

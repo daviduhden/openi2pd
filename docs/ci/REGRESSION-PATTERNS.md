@@ -1014,3 +1014,13 @@ its runner user and check accelerator status before building JNI.
 Retain the probe output independently of boot artifacts. The maintenance
 fixture replaces owner-only mode changes with a world-writable grant
 and expects rejection. Pending CI tests.
+
+### POD, member lifetime and artifact ownership
+
+Check executable module declarations independently of POD, including a
+real import after =cut. For JNI conversion helpers, member lifetime
+begins in declaration order; argument conversion writing to a string
+must occur after that member is constructed. Bound the whole device
+test before collecting failure evidence. For container artifacts,
+provision runner-owned output directories before root-in-container
+writes when a later host step must create manifests.
