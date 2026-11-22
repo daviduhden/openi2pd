@@ -16,13 +16,14 @@ package org.openi2pd.router;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertTrue;
 
 import android.content.Context;
 
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
+
+import java.util.Arrays;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -96,31 +97,32 @@ public final class RuntimeAdminParityTest {
 
     @Test
     public void oversizedArgumentsAreRejectedBeforeAnyNativeWork() {
-        // The length caps are checked on the Java side before
-        // conversion, and again in native code; an oversized value can
-        // never become a command.
+        // Direct JNI callers must reach the native length guards even
+        // when no daemon is available to process valid arguments.
         org.junit.Assume.assumeFalse("router already running", RouterService.isRouterRunning());
         I2PD_JNI.loadLibraries();
-        StringBuilder tunnelName = new StringBuilder();
-        for (int i = 0; i < 65; ++i) {
-            tunnelName.append('a');
-        }
-        StringBuilder hash = new StringBuilder();
-        for (int i = 0; i < 45; ++i) {
-            hash.append('A');
-        }
-        // The native entry points reject an oversized value with
-        // "invalid" (or "unavailable" when the router is stopped) but
-        // never with a token that reports success.
-        assertNotEquals("started", I2PD_JNI.startTunnel(tunnelName.toString()));
-        assertNotEquals("stopped", I2PD_JNI.stopTunnel(tunnelName.toString()));
-        assertNotEquals("ok", I2PD_JNI.banRouter(hash.toString()));
-        assertNotEquals("ok", I2PD_JNI.addSubscription(tunnelName.toString()));
-        assertNotEquals("ok", I2PD_JNI.addAddressWithResult("n.i2p", "AAAA", false));
+        // A supplementary character uses two UTF-16 units and four
+        // UTF-8 bytes. This input fits the cap exactly and needs heap
+        // storage in the native converter.
+        String tunnelAtLimit = repeat('a', 62) + "\uD83D\uDE00";
+        assertEquals("unavailable", I2PD_JNI.startTunnel(tunnelAtLimit));
+        assertEquals("invalid", I2PD_JNI.startTunnel(tunnelAtLimit + "a"));
+        assertEquals("invalid", I2PD_JNI.stopTunnel(tunnelAtLimit + "a"));
+        assertEquals("invalid", I2PD_JNI.stopTunnel("a\0b"));
+        assertEquals("invalid", I2PD_JNI.stopTunnel("a\uD83D"));
+        assertEquals("invalid", I2PD_JNI.banRouter(repeat('A', 45)));
+        assertEquals("invalid", I2PD_JNI.addSubscription(repeat('a', 513)));
+        assertEquals("invalid", I2PD_JNI.addAddressWithResult("n.i2p", repeat('A', 1025), false));
         assertEquals("invalid", I2PD_JNI.setBandwidth("KL"));
         assertEquals("invalid", I2PD_JNI.setBandwidth("k"));
         assertEquals("invalid", I2PD_JNI.setShareRatio(-1));
         assertEquals("invalid", I2PD_JNI.setShareRatio(101));
+    }
+
+    private static String repeat(char value, int count) {
+        char[] units = new char[count];
+        Arrays.fill(units, value);
+        return new String(units);
     }
 
     @Test

@@ -180,8 +180,9 @@ class ScopedUtfChars
 {
 public:
 	ScopedUtfChars (JNIEnv * env, jstring text, size_t maxChars = SIZE_MAX)
-		: m_Valid (Utf8FromJavaString (env, text, m_Value, maxChars))
 	{
+		// Conversion writes to m_Value after all members are constructed.
+		m_Valid = Utf8FromJavaString (env, text, m_Value, maxChars);
 	}
 	const char * c_str () const { return m_Valid ? m_Value.c_str () : nullptr; }
 	std::string_view view () const { return m_Valid ? std::string_view (m_Value) : std::string_view (); }
