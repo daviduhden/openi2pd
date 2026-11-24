@@ -452,8 +452,9 @@ does not resolve intentional ABI coverage or AGP deprecation findings.
   candidates derived from one snapshot can conflict. The JVM regression pins
   stale/equal rejection without changing persisted keys or format.
 - UI locale catalogs are `values` (English source/fallback),
-  `values-es`, `values-ru` and `values-zh-rCN`; `locales_config` and
-  `localeFilters` list en/es/ru/zh-rCN. Every **translatable** key needs all
+  `values-es`, `values-ru` and `values-zh-rCN`. Use the language tag `zh-CN`
+  in `locales_config` and the resource qualifier `zh-rCN` in
+  `localeFilters`. Every **translatable** key needs all
   four catalogs; `translatable="false"` identifiers (`app_name`,
   `services_bob/sam/i2cp`, `value_unknown`, `repository_url`, `license_url`)
   and the language/bandwidth/loglevel value arrays are deliberately exempt. Use `openi2pd-i18n` for new visible
