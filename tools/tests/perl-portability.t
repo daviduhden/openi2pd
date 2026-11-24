@@ -210,7 +210,7 @@ my %allowed_module = map { $_ => 1 } qw(
   strict warnings lib constant utf8
   Carp Config Cwd Digest::SHA Encode Errno File::Basename File::Copy File::Find File::Path File::Spec File::Temp
   FindBin Getopt::Long HTTP::Tiny IO::Select IO::Socket::INET IPC::Open3
-  JSON::PP POSIX Symbol Test::More
+  JSON::PP POSIX Symbol Test::More Time::HiRes
 );
 my %maintained_module = map {
     my $module = $_;
@@ -222,14 +222,20 @@ my %maintained_module = map {
 
 sub source_modules {
     my ($source) = @_;
+
     # POD begins with a column-one directive and continues through =cut.
     $source =~ s/^=[A-Za-z]\w*\b[^\n]*\n.*?(?:^=cut\b[^\n]*(?:\n|\z)|\z)//gms;
     return $source =~ /^[ \t]*(?:use|require)\s+([A-Za-z_][A-Za-z0-9_:]*)/mg;
 }
 
 is_deeply(
-    [ source_modules("use strict;\n\n=head1 DESCRIPTION\n\nrequire explicit support.\n\n=cut\n\nrequire Carp;\n") ],
-    [qw(strict Carp)], 'module scan ignores POD and resumes after =cut'
+    [
+        source_modules(
+"use strict;\n\n=head1 DESCRIPTION\n\nrequire explicit support.\n\n=cut\n\nrequire Carp;\n"
+        )
+    ],
+    [qw(strict Carp)],
+    'module scan ignores POD and resumes after =cut'
 );
 
 my @dangerous = (
@@ -332,8 +338,8 @@ ok(
 # silently skipping a syntax or style check.
 sub cmake_list_entries {
     my ( $text, $pattern ) = @_;
-    return () unless $text =~ $pattern;
-    my $block   = $1;
+    my ($block) = $text =~ $pattern;
+    return () unless defined $block;
     my $operand = qr/"\$\{(CMAKE_CURRENT_SOURCE_DIR|PROJECT_ROOT)\}\/([^"]+)"/;
     my @entries;
     while ( $block =~ /$operand/g ) {
