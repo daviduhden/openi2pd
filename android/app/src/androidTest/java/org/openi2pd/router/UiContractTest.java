@@ -58,6 +58,7 @@ public final class UiContractTest {
     }
 
     @Test
+    @UiThreadTest
     public void dashboardExposesStatusDetailAndReseed() {
         View view = inflate(R.layout.fragment_dashboard);
         assertNotNull(view.findViewById(R.id.status_detail));
@@ -65,6 +66,7 @@ public final class UiContractTest {
     }
 
     @Test
+    @UiThreadTest
     public void statisticsExposesNowAndPeakLabels() {
         View view = inflate(R.layout.fragment_statistics);
         assertNotNull(view.findViewById(R.id.stat_download_now));
@@ -73,6 +75,7 @@ public final class UiContractTest {
     }
 
     @Test
+    @UiThreadTest
     public void logsFiltersWrapAndSummaryIsAnnounced() {
         View view = inflate(R.layout.fragment_logs);
         View filters = view.findViewById(R.id.logs_filter_group);
@@ -83,6 +86,7 @@ public final class UiContractTest {
     }
 
     @Test
+    @UiThreadTest
     public void logRowIsOneScreenReaderStop() {
         View row = inflate(R.layout.item_log);
         assertTrue(row.isScreenReaderFocusable());
@@ -109,6 +113,7 @@ public final class UiContractTest {
     }
 
     @Test
+    @UiThreadTest
     public void wideLayoutUsesNavigationRail() {
         View wide = inflateWide(R.layout.activity_main, 800, 600);
         assertNotNull(wide.findViewById(R.id.nav_rail));
@@ -128,8 +133,8 @@ public final class UiContractTest {
         configuration.smallestScreenWidthDp = 360;
         Context context = new android.view.ContextThemeWrapper(
                 base.createConfigurationContext(configuration), R.style.Theme_OpenI2Pd);
-        View dashboard = LayoutInflater.from(context)
-                .inflate(R.layout.fragment_dashboard, null, false);
+        View dashboard =
+                LayoutInflater.from(context).inflate(R.layout.fragment_dashboard, null, false);
         int target = context.getResources().getDimensionPixelSize(R.dimen.touch_target);
         int width = Math.round(360 * context.getResources().getDisplayMetrics().density);
         dashboard.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
@@ -172,6 +177,7 @@ public final class UiContractTest {
     }
 
     @Test
+    @UiThreadTest
     public void windowOwnsSurfaceWithoutDuplicateRootBackgrounds() {
         for (int mode :
                 new int[] {Configuration.UI_MODE_NIGHT_NO, Configuration.UI_MODE_NIGHT_YES}) {
@@ -203,6 +209,7 @@ public final class UiContractTest {
     }
 
     @Test
+    @UiThreadTest
     public void programmaticRowMeetsTouchTargetAndSpeaksOnce() {
         Context context = themed();
         MaterialButton button = UiFactory.button(context);
@@ -215,6 +222,7 @@ public final class UiContractTest {
     }
 
     @Test
+    @UiThreadTest
     public void metricLabelsAreAssociatedWithValueViews() {
         assertLabelFor(inflate(R.layout.fragment_dashboard), R.id.metric_uptime, R.id.metric_peers,
                 R.id.metric_routers, R.id.metric_tunnels, R.id.metric_download, R.id.metric_upload,

@@ -17,6 +17,7 @@ import static org.junit.Assert.*;
 import android.Manifest;
 import android.content.Context;
 import android.os.Build;
+import android.os.SystemClock;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
@@ -25,6 +26,7 @@ import androidx.test.core.app.ActivityScenario;
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -104,8 +106,8 @@ public final class UiDialogLifecycleTest {
                         .beginTransaction()
                         .replace(R.id.fragment_container, fragment, "dialog-lifecycle")
                         .commitNow();
-                clickLabel(fragment.requireView(), activity.getString(actionLabel));
             });
+            clickWhenReady(scenario, fragment, actionLabel);
             onView(withText(R.string.address_book_save))
                     .inRoot(isDialog())
                     .check(matches(isDisplayed()));
@@ -115,8 +117,7 @@ public final class UiDialogLifecycleTest {
                 manager.beginTransaction().attach(fragment).commitNow();
             });
             onView(withText(R.string.address_book_save)).check(doesNotExist());
-            scenario.onActivity(activity
-                    -> clickLabel(fragment.requireView(), activity.getString(actionLabel)));
+            clickWhenReady(scenario, fragment, actionLabel);
             onView(withText(R.string.address_book_save))
                     .inRoot(isDialog())
                     .check(matches(isDisplayed()));
@@ -124,19 +125,42 @@ public final class UiDialogLifecycleTest {
         }
     }
 
+    private static void clickWhenReady(
+            ActivityScenario<MainActivity> scenario, Fragment fragment, int actionLabel) {
+        if (fragment instanceof AddressBookFragment) {
+            // onResume starts an asynchronous refresh. Observe its final
+            // status before invoking the action exactly once.
+            var loading = new AtomicBoolean(true);
+            long deadline = SystemClock.elapsedRealtime() + 5_000;
+            do {
+                scenario.onActivity(activity
+                        -> loading.set(
+                                findLabel(fragment.requireView(),
+                                        activity.getString(R.string.address_book_loading), false)
+                                != null));
+                if (!loading.get())
+                    break;
+                SystemClock.sleep(20);
+            } while (SystemClock.elapsedRealtime() < deadline);
+            assertFalse("Address book refresh did not complete", loading.get());
+        }
+        scenario.onActivity(
+                activity -> clickLabel(fragment.requireView(), activity.getString(actionLabel)));
+    }
+
     private static void clickLabel(View root, String label) {
-        View action = findClickableLabel(root, label);
+        View action = findLabel(root, label, true);
         assertNotNull("missing dialog action", action);
         assertTrue(action.performClick());
     }
 
-    private static View findClickableLabel(View view, String label) {
-        if (view instanceof TextView text && view.isClickable()
+    private static View findLabel(View view, String label, boolean clickable) {
+        if (view instanceof TextView text && view.isClickable() == clickable
                 && label.contentEquals(text.getText()))
             return view;
         if (view instanceof ViewGroup group)
             for (int i = 0; i < group.getChildCount(); ++i) {
-                View child = findClickableLabel(group.getChildAt(i), label);
+                View child = findLabel(group.getChildAt(i), label, clickable);
                 if (child != null)
                     return child;
             }

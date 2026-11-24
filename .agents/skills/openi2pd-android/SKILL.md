@@ -126,6 +126,21 @@ run Gradle, install an APK or run a device test.
 
 ## Known issues and decisions
 
+- Retain exact resource qualifiers in Gradle and check packaged configurations
+  in debug and release APKs. Source parity can pass even when filtering drops
+  the region-qualified Chinese catalog. Run Material view inflation on the
+  main thread in fixtures and observe asynchronous refresh readiness before
+  attempting a single dialog action.
+
+- Android Binder does not supply a caller PID to remote oneway transactions.
+  A synchronous handshake's process identity therefore cannot be compared
+  directly with the PID read in oneway SAF cancel or retire. Preserve the
+  existing cross-process authorization boundary when designing the
+  sideband fix. Local stub calls or a wire-flags assertion can pass while
+  delivery to the real broker rejects the request. Device coverage must
+  exercise both authorized cancellation and actual binder death.
+
+
 When successful Lint reports a Lifecycle patch, inspect official release
 notes and move ViewModel and LiveData pins together with the dependency
 matrix. A source pin update is pending Gradle/Lint/device evidence and
@@ -438,7 +453,7 @@ does not resolve intentional ABI coverage or AGP deprecation findings.
   stale/equal rejection without changing persisted keys or format.
 - UI locale catalogs are `values` (English source/fallback),
   `values-es`, `values-ru` and `values-zh-rCN`; `locales_config` and
-  `localeFilters` list en/es/ru/zh-CN. Every **translatable** key needs all
+  `localeFilters` list en/es/ru/zh-rCN. Every **translatable** key needs all
   four catalogs; `translatable="false"` identifiers (`app_name`,
   `services_bob/sam/i2cp`, `value_unknown`, `repository_url`, `license_url`)
   and the language/bandwidth/loglevel value arrays are deliberately exempt. Use `openi2pd-i18n` for new visible
