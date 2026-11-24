@@ -13,7 +13,7 @@ use warnings;
 # a TOML boolean is not Perl's numeric scalar. No config value is eval'd.
 sub parse {
     my ( $class, $text ) = @_;
-    $text =~ s/\r\n/\n/g;
+    $text =~ s/\r\n/\n/gx;
     my $self  = bless { text => $text, at => 0, explicit => {} }, $class;
     my $root  = { type => 'table', value => {} };
     my $table = $root;
@@ -82,7 +82,7 @@ sub _space {
                 ? length( $self->{text} ) - $self->{at}
                 : $end - $self->{at} );
             $self->_error('control character in comment')
-              if $comment =~ /[\x00-\x08\x0b-\x1f\x7f]/;
+              if $comment =~ /[\x00-\x08\x0b-\x1f\x7f]/x;
             $self->{at} = $end < 0 ? length $self->{text} : $end;
         }
         else { last; }
@@ -101,9 +101,10 @@ sub _keys {
         }
         else {
             my $tail = substr( $self->{text}, $self->{at} );
-            $self->_error('expected key') unless $tail =~ /\A([A-Za-z0-9_-]+)/;
-            push @keys, $1;
-            $self->{at} += length $1;
+            my ($key) = $tail =~ /\A([A-Za-z0-9_-]+)/x;
+            $self->_error('expected key') unless defined $key;
+            push @keys, $key;
+            $self->{at} += length $key;
         }
         $self->_error('key path exceeds 64 components') if @keys > 64;
         $self->_space(0);
@@ -125,50 +126,61 @@ sub _string {
             for ( 1 .. 2 ) { $value .= $quote if $self->_take($quote); }
             return $value;
         }
-        my $char = substr( $self->{text}, $self->{at}++, 1 );
+        my $char = $self->_string_character($multi);
         return $value if !$multi && $char eq $quote;
-        $self->_error('newline in single-line string')
-          if !$multi && $char eq "\n";
-        $self->_error('control character in string')
-          if ord($char) < 32 && $char ne "\t" && !( $multi && $char eq "\n" );
-        $self->_error('DEL in string') if ord($char) == 127;
         if ( $quote eq q{"} && $char eq '\\' ) {
             if ($multi) {
                 my $tail = substr( $self->{text}, $self->{at} );
-                if ( $tail =~ /\A[ \t]*\n[ \t\n]*/ ) {
-                    $self->{at} += length $&;
+                my ($continuation) = $tail =~ /\A([ \t]*\n[ \t\n]*)/x;
+                if ( defined $continuation ) {
+                    $self->{at} += length $continuation;
                     next;
                 }
             }
-            $self->_error('unfinished escape')
-              if $self->{at} >= length $self->{text};
-            my $escape  = substr( $self->{text}, $self->{at}++, 1 );
-            my %escapes = (
-                b    => "\b",
-                t    => "\t",
-                n    => "\n",
-                f    => "\f",
-                r    => "\r",
-                q{"} => q{"},
-                '\\' => '\\'
-            );
-            if    ( exists $escapes{$escape} ) { $value .= $escapes{$escape}; }
-            elsif ( $escape eq 'u' || $escape eq 'U' ) {
-                my $digits = $escape eq 'u' ? 4 : 8;
-                my $hex    = substr( $self->{text}, $self->{at}, $digits );
-                $self->_error('invalid Unicode escape')
-                  unless length($hex) == $digits && $hex =~ /\A[0-9a-fA-F]+\z/;
-                $self->{at} += $digits;
-                my $code = hex $hex;
-                $self->_error('invalid Unicode scalar')
-                  if $code > 0x10ffff || ( $code >= 0xd800 && $code <= 0xdfff );
-                $value .= chr $code;
-            }
-            else { $self->_error('unknown string escape'); }
+            $value .= $self->_escape;
         }
         else { $value .= $char; }
     }
-    $self->_error('unterminated string');
+    return $self->_error('unterminated string');
+}
+
+sub _string_character {
+    my ( $self, $multi ) = @_;
+    my $char = substr( $self->{text}, $self->{at}++, 1 );
+    $self->_error('newline in single-line string') if !$multi && $char eq "\n";
+    $self->_error('control character in string')
+      if ord($char) < 32 && $char ne "\t" && !( $multi && $char eq "\n" );
+    $self->_error('DEL in string') if ord($char) == 127;
+    return $char;
+}
+
+sub _escape {
+    my ($self) = @_;
+    $self->_error('unfinished escape')
+      if $self->{at} >= length $self->{text};
+    my $escape  = substr( $self->{text}, $self->{at}++, 1 );
+    my %escapes = (
+        b    => "\b",
+        t    => "\t",
+        n    => "\n",
+        f    => "\f",
+        r    => "\r",
+        q{"} => q{"},
+        '\\' => '\\',
+    );
+    return $escapes{$escape} if exists $escapes{$escape};
+    $self->_error('unknown string escape')
+      unless $escape eq 'u' || $escape eq 'U';
+
+    my $digits = $escape eq 'u' ? 4 : 8;
+    my $hex    = substr( $self->{text}, $self->{at}, $digits );
+    $self->_error('invalid Unicode escape')
+      unless length($hex) == $digits && $hex =~ /\A[0-9a-fA-F]+\z/x;
+    $self->{at} += $digits;
+    my $code = hex $hex;
+    $self->_error('invalid Unicode scalar')
+      if $code > 0x10ffff || ( $code >= 0xd800 && $code <= 0xdfff );
+    return chr $code;
 }
 
 sub _value {
@@ -195,41 +207,50 @@ sub _value {
         }
         return { type => 'array', value => \@values };
     }
-    if ( $self->_take('{') ) {
-        my $table = { type => 'table', value => {} };
-        $self->_space(0);
-        unless ( $self->_take('}') ) {
-            while (1) {
-                my @keys = $self->_keys;
-                $self->_expect('=');
-                $self->_assign( $table, \@keys, $self->_value );
-                $self->_space(0);
-                last if $self->_take('}');
-                $self->_expect(',');
-                $self->_space(0);
-                $self->_error('trailing comma in inline table')
-                  if substr( $self->{text}, $self->{at}, 1 ) eq '}';
-            }
+    return $self->_inline_table if $self->_take('{');
+    return $self->_scalar;
+}
+
+sub _inline_table {
+    my ($self) = @_;
+    my $table = { type => 'table', value => {} };
+    $self->_space(0);
+    unless ( $self->_take('}') ) {
+        while (1) {
+            my @keys = $self->_keys;
+            $self->_expect('=');
+            $self->_assign( $table, \@keys, $self->_value );
+            $self->_space(0);
+            last if $self->_take('}');
+            $self->_expect(',');
+            $self->_space(0);
+            $self->_error('trailing comma in inline table')
+              if substr( $self->{text}, $self->{at}, 1 ) eq '}';
         }
-        $self->_seal($table);
-        return $table;
     }
-    my $tail = substr( $self->{text}, $self->{at} );
-    $self->_error('expected value') unless $tail =~ /\A([^\s\],}#]+)/;
-    my $token = $1;
+    $self->_seal($table);
+    return $table;
+}
+
+sub _scalar {
+    my ($self)  = @_;
+    my $tail    = substr( $self->{text}, $self->{at} );
+    my ($token) = $tail =~ /\A([^\s\],}#]+)/x;
+    $self->_error('expected value') unless defined $token;
     $self->{at} += length $token;
     return { type => 'boolean', value => $token eq 'true' ? 1 : 0 }
       if $token eq 'true' || $token eq 'false';
-    if ( $token =~ /\A[+-]?(?:0|[1-9](?:_?[0-9])*)\z/ ) {
-        ( my $integer = $token ) =~ s/_//g;
+    my $decimal = qr/0 | [1-9](?:_?[0-9])*/x;
+    if ( $token =~ /\A [+-]? (?:$decimal) \z/x ) {
+        ( my $integer = $token ) =~ s/_//gx;
         return { type => 'integer', value => _bounded_integer( $integer, 10 ) };
     }
-    if ( $token =~ /\A0([xob])([0-9a-fA-F](?:_?[0-9a-fA-F])*)\z/ ) {
+    if ( $token =~ /\A0([xob])([0-9a-fA-F](?:_?[0-9a-fA-F])*)\z/x ) {
         my ( $base, $digits ) = ( $1, $2 );
         $self->_error('invalid base integer')
-          if ( $base eq 'b' && $digits =~ /[^01_]/ )
-          || ( $base eq 'o' && $digits =~ /[^0-7_]/ );
-        $digits =~ s/_//g;
+          if ( $base eq 'b' && $digits =~ /[^01_]/x )
+          || ( $base eq 'o' && $digits =~ /[^0-7_]/x );
+        $digits =~ s/_//gx;
         my $integer =
           _bounded_integer( $digits, $base eq 'x' ? 16 : $base eq 'b' ? 2 : 8 );
         return { type => 'integer', value => $integer };
@@ -237,19 +258,22 @@ sub _value {
 
     # These TOML types are syntactically valid but none is a valid
     # validator option. Preserve type rejection instead of coercing them.
+    my $fraction = qr/\.[0-9](?:_?[0-9])*/x;
+    my $exponent = qr/[eE][+-]?[0-9](?:_?[0-9])*/x;
     if ( $token =~
-/\A[+-]?(?:inf|nan|(?:0|[1-9](?:_?[0-9])*)(?:(?:\.[0-9](?:_?[0-9])*)(?:[eE][+-]?[0-9](?:_?[0-9])*)?|[eE][+-]?[0-9](?:_?[0-9])*))\z/
+/\A [+-]? (?:inf | nan | (?:$decimal) (?:$fraction $exponent? | $exponent)) \z/x
       )
     {
         return { type => 'float', value => $token };
     }
-    if ( $token =~
-/\A\d{4}-\d\d-\d\d(?:[Tt]\d\d:\d\d:\d\d(?:\.\d+)?(?:[Zz]|[+-]\d\d:\d\d)?)?\z/
-        || $token =~ /\A\d\d:\d\d:\d\d(?:\.\d+)?\z/ )
+    my $time = qr/\d\d:\d\d:\d\d(?:\.\d+)?/x;
+    my $zone = qr/[Zz] | [+-]\d\d:\d\d/x;
+    if (   $token =~ /\A \d{4}-\d\d-\d\d (?:[Tt] $time $zone?)? \z/x
+        || $token =~ /\A $time \z/x )
     {
         return { type => 'datetime', value => $token };
     }
-    $self->_error('invalid value');
+    return $self->_error('invalid value');
 }
 
 sub _table {
@@ -269,10 +293,10 @@ sub _table {
 sub _assign {
     my ( $self, $table, $keys, $value ) = @_;
     my @parents = @{$keys};
-    my $last    = pop @parents;
+    my $leaf    = pop @parents;
     $table = $self->_table( $table, \@parents, 1 );
-    $self->_error('duplicate key') if exists $table->{value}{$last};
-    $table->{value}{$last} = $value;
+    $self->_error('duplicate key') if exists $table->{value}{$leaf};
+    $table->{value}{$leaf} = $value;
     return;
 }
 
@@ -281,8 +305,8 @@ sub _assign {
 # native integer overflow, floating coercion or architecture warnings.
 sub _bounded_integer {
     my ( $digits, $base ) = @_;
-    my $negative = $digits =~ s/\A-//;
-    $digits =~ s/\A\+//;
+    my $negative = $digits =~ s/\A-//x;
+    $digits =~ s/\A\+//x;
     my $value = 0;
     for my $digit ( split //, lc $digits ) {
         my $number = index( '0123456789abcdef', $digit );

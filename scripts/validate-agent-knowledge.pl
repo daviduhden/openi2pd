@@ -585,7 +585,7 @@ sub has_heading {
 
 sub frontmatter {
     my ($text) = @_;
-    return undef unless $text =~ /\A---\s*\n(.*?)\n---\s*(?:\n|\z)/s;
+    return unless $text =~ /\A---\s*\n(.*?)\n---\s*(?:\n|\z)/s;
     my %fields;
     for my $line ( split /\R/, $1 ) {
         next unless $line =~ /^([A-Za-z0-9_-]+):\s*(.*?)\s*$/;
