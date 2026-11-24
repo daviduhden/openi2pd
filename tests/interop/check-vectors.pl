@@ -233,15 +233,17 @@ sub check_provenance {
             push @errors, 'provenance contains must be a non-empty string';
             next;
         }
+
         # Resolve source from the pinned commit, so checkout filters
         # and working-tree flags cannot change citation contents.
-        my ( $source, $error ) = run_git( 'cat-file', 'blob', "$COMMIT:$relative" );
+        my ( $source, $error ) =
+          run_git( 'cat-file', 'blob', "$COMMIT:$relative" );
         if ( defined $error ) {
             push @errors, "provenance file unavailable in $COMMIT: $relative";
             next;
         }
         my @lines = split /\n/, $source;
-        my $line = $lines[$line_no - 1];
+        my $line  = $lines[ $line_no - 1 ];
         if ( !defined $line ) {
             push @errors, "provenance line $j->{line} past EOF: $j->{path}";
             next;

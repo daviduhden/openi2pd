@@ -60,6 +60,7 @@ sub usage {
 }
 
 my $failed = 0;
+
 sub mismatch {
     my ($diagnostic) = @_;
     print STDERR "$diagnostic\n";
@@ -77,15 +78,16 @@ sub source_without_comments {
 
 # Keep the set of Java spellings closed. An unfamiliar type requires
 # deliberate mapping so a source change cannot evade the ABI check.
-my %primitive = map { $_ => "j$_" }
-  qw(boolean byte char short int long float double);
+my %primitive =
+  map { $_ => "j$_" } qw(boolean byte char short int long float double);
+
 sub jni_type {
     my ($type) = @_;
     $type =~ s/\s+//g;
     return $primitive{$type} if exists $primitive{$type};
-    return 'void' if $type eq 'void';
-    return 'jstring' if $type eq 'String';
-    return 'jclass' if $type eq 'Class<?>';
+    return 'void'            if $type eq 'void';
+    return 'jstring'         if $type eq 'String';
+    return 'jclass'          if $type eq 'Class<?>';
 
     # C JNI erases object-array element types. This bridge reads byte
     # arrays from its object-array slots, so other element types need
@@ -101,11 +103,12 @@ sub jni_type {
 sub record_signature {
     my ( $entries, $label, $name, $signature, $noexcept ) = @_;
     if ( exists $entries->{$name} ) {
-        mismatch("duplicate $label for native $name; overloads require ABI review");
+        mismatch(
+            "duplicate $label for native $name; overloads require ABI review");
         return;
     }
     $entries->{$name} = {
-        abi => join( ', ', @{$signature} ),
+        abi      => join( ', ', @{$signature} ),
         noexcept => $noexcept,
     };
     return;
@@ -114,6 +117,7 @@ sub record_signature {
 sub java_signatures {
     my ($source) = @_;
     my %entries;
+
     # Consume quoted and comment tokens together so a URL inside a
     # string is never mistaken for the start of a line comment.
     $source =~ s{
@@ -122,18 +126,24 @@ sub java_signatures {
         | "(?: [^"\\\n] | \\. )*"
         | '(?: [^'\\\n] | \\. )*'
     }{ }gsx;
-    while ( $source =~ /
+    while (
+        $source =~ /
         ((?:(?:public|protected|private|static|final|synchronized)\s+)*)
         \bnative\s+([\w<>\[\]\s?]+?)\s+(\w+)\s*\(([^()]*)\)\s*;
-    /gx ) {
-        my ( $modifiers, $return_type, $name, $parameters ) = ( $1, $2, $3, $4 );
-        my @signature = ( jni_type($return_type), 'JNIEnv*',
-            $modifiers =~ /\bstatic\b/ ? 'jclass' : 'jobject' );
+    /gx
+      )
+    {
+        my ( $modifiers, $return_type, $name, $parameters ) =
+          ( $1, $2, $3, $4 );
+        my @signature = (
+            jni_type($return_type), 'JNIEnv*',
+            $modifiers =~ /\bstatic\b/ ? 'jclass' : 'jobject'
+        );
         for my $parameter ( split /,/, $parameters, -1 ) {
             if ( $parameter =~ /\A\s*([\w<>\[\]\s?]+?)\s+\w+\s*\z/ ) {
                 my $type = jni_type($1);
-                push @signature, defined($type) && $type ne 'void'
-                  ? $type : undef;
+                push @signature,
+                  defined($type) && $type ne 'void' ? $type : undef;
             }
             else {
                 push @signature, undef;
@@ -145,6 +155,7 @@ sub java_signatures {
         }
         record_signature( \%entries, 'Java declaration', $name, \@signature );
     }
+
     # Reject unsupported declaration syntax rather than dropping it.
     my $native_count = () = $source =~ /\bnative\b/g;
     if ( !$native_count || $native_count != keys %entries ) {
@@ -156,11 +167,14 @@ sub java_signatures {
 sub cpp_signatures {
     my ( $source, $label, $terminator ) = @_;
     my %entries;
-    while ( $source =~ /
+    while (
+        $source =~ /
         \bJNIEXPORT\s+(\w+)\s+JNICALL\s+
         Java_org_openi2pd_router_I2PD_1JNI_(\w+)\s*
         \(([^()]*)\)\s*(noexcept\s*)?\Q$terminator\E
-    /gx ) {
+    /gx
+      )
+    {
         my ( $return_type, $name, $parameters, $noexcept ) = ( $1, $2, $3, $4 );
         my @signature = ($return_type);
         for my $parameter ( split /,/, $parameters, -1 ) {
@@ -187,9 +201,10 @@ sub compare_signatures {
             next;
         }
         my $expected = $java->{$name}{abi};
-        my $actual = $native->{$name}{abi};
-        mismatch("$label signature mismatch for native $name (expected $expected; found $actual)")
-          if $expected ne $actual;
+        my $actual   = $native->{$name}{abi};
+        mismatch(
+"$label signature mismatch for native $name (expected $expected; found $actual)"
+        ) if $expected ne $actual;
     }
     for my $name ( sort keys %{$native} ) {
         mismatch("$label $name has no Java native declaration")
@@ -199,22 +214,27 @@ sub compare_signatures {
 }
 
 my $java_entries = java_signatures( slurp($java) );
-my $header_entries = cpp_signatures( source_without_comments($header),
-    'header declaration', ';' );
-my $native_entries = cpp_signatures( source_without_comments($native),
-    'C++ definition', '{' );
+my $header_entries =
+  cpp_signatures( source_without_comments($header), 'header declaration', ';' );
+my $native_entries =
+  cpp_signatures( source_without_comments($native), 'C++ definition', '{' );
 compare_signatures( $java_entries, $header_entries, 'header declaration' );
 compare_signatures( $java_entries, $native_entries, 'C++ definition' );
 if ( defined $generated_header ) {
-    compare_signatures( $java_entries,
-        cpp_signatures( source_without_comments($generated_header),
-            'javac header declaration', ';' ),
-        'javac header declaration' );
+    compare_signatures(
+        $java_entries,
+        cpp_signatures(
+            source_without_comments($generated_header),
+            'javac header declaration', ';'
+        ),
+        'javac header declaration'
+    );
 }
 for my $name ( sort keys %{$header_entries} ) {
     next if !exists $native_entries->{$name};
     mismatch("C++ exception specification mismatch for native $name")
-      if $header_entries->{$name}{noexcept} != $native_entries->{$name}{noexcept};
+      if $header_entries->{$name}{noexcept} !=
+      $native_entries->{$name}{noexcept};
 }
 
 exit 1 if $failed;

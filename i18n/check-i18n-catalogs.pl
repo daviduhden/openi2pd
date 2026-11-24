@@ -19,7 +19,7 @@
 use strict;
 use warnings;
 use 5.016;
-use Carp qw(croak);
+use Carp         qw(croak);
 use Getopt::Long qw(GetOptions);
 use File::Spec;
 use File::Basename qw(dirname);
@@ -98,9 +98,10 @@ sub parse_strings {
     $end = length($text) if $end < 0;
     my $block = substr( $text, $start, $end - $start );
     my %strings;
-    my $literal = qr/ "(?: [^"\\] | \\. )*" /x;
+    my $literal     = qr/ "(?: [^"\\] | \\. )*" /x;
     my $literal_run = qr/ ( (?: $literal \s* )+ ) /x;
-    while ( $block =~ / \{ \s* $literal_run \s* , \s* $literal_run \s* \} /gx ) {
+    while ( $block =~ / \{ \s* $literal_run \s* , \s* $literal_run \s* \} /gx )
+    {
 
         # A nested match below resets $1/$2, so snapshot both literal
         # runs before extracting the individual string fragments from
@@ -129,7 +130,9 @@ sub parse_plurals {
     $block = substr( $block, 0, $end + 2 ) if $end >= 0;
     my %plurals;
     my $quoted_text = qr/ " ( (?: [^"\\] | \\. )* ) " /x;
-    while ( $block =~ / \{ \s* $quoted_text \s* , \s* \{ ([^}]*) \} \s* \} /gx ) {
+
+    while ( $block =~ / \{ \s* $quoted_text \s* , \s* \{ ([^}]*) \} \s* \} /gx )
+    {
         my $key = unescape($1);
         my @forms;
         my $list = $2;
@@ -149,9 +152,9 @@ sub placeholders {
     # accept %s/%d becoming %d/%s and reinterpret pointers as integers.
     # Consume %% atomically; its second percent must never start a
     # conversion.
-    my $position = qr/ \d+ \$ /x;
-    my $flags    = qr/ [-+ 0#]* /x;
-    my $field    = qr/ \* (?: $position )? | \d* /x;
+    my $position        = qr/ \d+ \$ /x;
+    my $flags           = qr/ [-+ 0#]* /x;
+    my $field           = qr/ \* (?: $position )? | \d* /x;
     my $length_modifier = qr/ hh | ll | [hljztL] /x;
     my @found;
     my $escaped_percent = 0;
@@ -163,11 +166,13 @@ sub placeholders {
             pos($value) = $offset + 1;
             next;
         }
-        if ( $tail =~ /
+        if (
+            $tail =~ /
              ^ ( (?: $position )? $flags
                  ( $field ) (?: \. ( $field ) )?
                  ( $length_modifier )? ([diuoxXfFeEgGaAcspn]) )
-             /x )
+             /x
+          )
         {
             my ( $directive, $width, $precision, $length, $conversion ) =
               ( $1, $2, $3 // '', $4 // '', $5 );
@@ -180,7 +185,7 @@ sub placeholders {
               ? $length =~ / ^ (?: hh | h | l | ll | j | z | t )? $ /x
               : $conversion =~ / ^ [fFeEgGaA] $ /x ? $length =~ / ^ [lL]? $ /x
               : $conversion =~ / ^ [cs] $ /x       ? $length =~ / ^ l? $ /x
-              :                                 $length eq '';
+              :                                      $length eq '';
             fail("unsupported printf length in '%$directive'")
               unless $legal_length;
             push @found, 'width:int'     if substr( $width,     0, 1 ) eq '*';
@@ -193,7 +198,8 @@ sub placeholders {
         # A terminal percent or ordinary prose punctuation is literal.
         # Unknown source operands such as %q are never portable formats.
         fail("unsupported printf directive in '$value'")
-          if $tail =~ / ^ (?: $position )? $flags [*\d]* (?: \. [*\d]* )? [A-Za-z] /x;
+          if $tail =~
+          / ^ (?: $position )? $flags [*\d]* (?: \. [*\d]* )? [A-Za-z] /x;
     }
     return join( ',', @found ) . ";escaped-percent=$escaped_percent";
 }

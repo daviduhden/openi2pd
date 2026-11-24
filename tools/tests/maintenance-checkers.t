@@ -309,50 +309,68 @@ sub workflow_crash_fixtures {
     my $linux =
       File::Spec->catfile( $tmp, '.github', 'workflows', 'build-linux.yml' );
     my $floor_workflow_source = read_fixture_file($linux);
-    my $ungated_floor = $floor_workflow_source;
-    ok( $ungated_floor =~ s/inputs\.linux_floor_toolchains/true/,
-        'fixture removes the distribution toolchain opt-in' );
+    my $ungated_floor         = $floor_workflow_source;
+    ok(
+        $ungated_floor =~ s/inputs\.linux_floor_toolchains/true/,
+        'fixture removes the distribution toolchain opt-in'
+    );
     write_file( $linux, $ungated_floor );
     ( $code, $out ) = run_checker($checker);
     is( $code, 1, 'workflow checker requires an explicit toolchain opt-in' );
-    like( $out, qr/must stay gated on inputs\.linux_floor_toolchains/,
-        'diagnostic identifies the distribution toolchain gate' );
+    like(
+        $out,
+        qr/must stay gated on inputs\.linux_floor_toolchains/,
+        'diagnostic identifies the distribution toolchain gate'
+    );
     write_file( $linux, $floor_workflow_source );
     my $android =
       File::Spec->catfile( $tmp, '.github', 'workflows', 'build-android.yml' );
-    my $android_source = read_fixture_file($android);
+    my $android_source            = read_fixture_file($android);
     my $unbounded_instrumentation = $android_source;
-    ok( $unbounded_instrumentation =~ s/timeout --kill-after=15s 30m (?=\.\/gradlew)//,
-        'fixture removes the instrumentation command deadline' );
+    ok(
+        $unbounded_instrumentation =~
+          s/timeout --kill-after=15s 30m (?=\.\/gradlew)//,
+        'fixture removes the instrumentation command deadline'
+    );
     write_file( $android, $unbounded_instrumentation );
     ( $code, $out ) = run_checker($checker);
     is( $code, 1, 'workflow checker rejects unbounded instrumentation' );
-    like( $out, qr/Android instrumentation needs a deadline/,
-        'diagnostic identifies the instrumentation deadline' );
+    like(
+        $out,
+        qr/Android instrumentation needs a deadline/,
+        'diagnostic identifies the instrumentation deadline'
+    );
     write_file( $android, $android_source );
-    my $kvm_access = q{sudo chmod u+rw /dev/kvm};
+    my $kvm_access    = q{sudo chmod u+rw /dev/kvm};
     my $overbroad_kvm = $android_source;
     ok( $overbroad_kvm =~ s/\Q$kvm_access\E/sudo chmod a+rw \/dev\/kvm/,
         'fixture widens the KVM device permissions' );
     write_file( $android, $overbroad_kvm );
     ( $code, $out ) = run_checker($checker);
     is( $code, 1, 'workflow checker rejects world-writable KVM setup' );
-    like( $out, qr/Android UI must verify runner-only KVM access/,
-        'diagnostic identifies the KVM access boundary' );
+    like(
+        $out,
+        qr/Android UI must verify runner-only KVM access/,
+        'diagnostic identifies the KVM access boundary'
+    );
     write_file( $android, $android_source );
     my $unbounded_adb = $android_source;
     ok(
-        $unbounded_adb =~ s/timeout --kill-after=5s 15s ("\$ADB" -s emulator-5554 logcat)/$1/,
+        $unbounded_adb =~
+          s/timeout --kill-after=5s 15s ("\$ADB" -s emulator-5554 logcat)/$1/,
         'fixture removes the logcat deadline'
     );
     write_file( $android, $unbounded_adb );
     ( $code, $out ) = run_checker($checker);
     is( $code, 1, 'workflow checker rejects unbounded emulator diagnostics' );
-    like( $out, qr/Android emulator diagnostics must be bounded/,
-        'diagnostic identifies the missing ADB deadline' );
+    like(
+        $out,
+        qr/Android emulator diagnostics must be bounded/,
+        'diagnostic identifies the missing ADB deadline'
+    );
     write_file( $android, $android_source );
     my $unchecked_emulator = $android_source;
-    my $liveness_check = q{kill -0 "$emulator_pid"};
+    my $liveness_check     = q{kill -0 "$emulator_pid"};
     ok(
         $unchecked_emulator =~ s/\Q$liveness_check\E/true/,
         'fixture removes the emulator liveness check'
@@ -360,25 +378,34 @@ sub workflow_crash_fixtures {
     write_file( $android, $unchecked_emulator );
     ( $code, $out ) = run_checker($checker);
     is( $code, 1, 'workflow checker rejects unchecked emulator startup' );
-    like( $out, qr/Android emulator startup must check process liveness/,
-        'diagnostic identifies the missing startup liveness check' );
+    like(
+        $out,
+        qr/Android emulator startup must check process liveness/,
+        'diagnostic identifies the missing startup liveness check'
+    );
     write_file( $android, $android_source );
-    my $avd_listing = q{"$emulator" -list-avds};
+    my $avd_listing   = q{"$emulator" -list-avds};
     my $unchecked_avd = $android_source;
-    ok( $unchecked_avd =~ s/\Q$avd_listing\E/true/,
-        'fixture removes emulator-side AVD discovery' );
+    ok(
+        $unchecked_avd =~ s/\Q$avd_listing\E/true/,
+        'fixture removes emulator-side AVD discovery'
+    );
     write_file( $android, $unchecked_avd );
     ( $code, $out ) = run_checker($checker);
     is( $code, 1, 'workflow checker requires emulator-side AVD discovery' );
-    like( $out, qr/Android AVD producer and emulator must share a verified lookup directory/,
-        'diagnostic identifies the shared AVD lookup directory' );
+    like(
+        $out,
+qr/Android AVD producer and emulator must share a verified lookup directory/,
+        'diagnostic identifies the shared AVD lookup directory'
+    );
     write_file( $android, $android_source );
-    my $package_guard = q{name='dev[.]uhden[.]i2pd'};
+    my $package_guard  = q{name='dev[.]uhden[.]i2pd'};
     my @package_checks = $android_source =~ /\Q$package_guard\E/g;
     is( scalar @package_checks, 2, 'signer guards both APKs' );
+
     for my $mutated_check ( 1 .. 2 ) {
         my $candidate = $android_source;
-        my $seen = 0;
+        my $seen      = 0;
         $candidate =~ s/\Q$package_guard\E/
           ++$seen == $mutated_check ? q{name='dev.uhden.i2pd'} : $package_guard
         /gex;
@@ -386,8 +413,11 @@ sub workflow_crash_fixtures {
         write_file( $android, $candidate );
         ( $code, $out ) = run_checker($checker);
         is( $code, 1, 'workflow checker rejects wildcard package matching' );
-        like( $out, qr/exact APK package check missing/,
-            'diagnostic identifies the package check' );
+        like(
+            $out,
+            qr/exact APK package check missing/,
+            'diagnostic identifies the package check'
+        );
     }
     write_file( $android, $android_source );
     for my $boundary (
@@ -1243,13 +1273,18 @@ workflow_crash_fixtures($root);
     my $valid_native = read_fixture_file($native);
     for my $parameter ( 'jobject', 'jclass, jint' ) {
         my $candidate = $valid_native;
-        ok( $candidate =~ s/\bjclass\b/$parameter/,
-            'fixture changes the native ABI' );
+        ok(
+            $candidate =~ s/\bjclass\b/$parameter/,
+            'fixture changes the native ABI'
+        );
         write_file( $native, $candidate );
         ( $code, $out ) = run_checker( $jni_checker, '--root', $tmp );
         is( $code, 1, 'JNI checker rejects receiver or parameter drift' );
-        like( $out, qr/C\+\+ definition signature mismatch/,
-            'diagnostic identifies the mismatched definition' );
+        like(
+            $out,
+            qr/C\+\+ definition signature mismatch/,
+            'diagnostic identifies the mismatched definition'
+        );
     }
 
     write_file( $native, "// no definition\n" );
@@ -1962,7 +1997,7 @@ CPP
     # Parent paths and fixture contents remain raw UTF-8 bytes. A decoded
     # filename must not upgrade the already encoded parent a second time.
     my $nested = File::Spec->catdir( $docs, $lower );
-    write_file( File::Spec->catfile( $nested, "$lower.md" ), "# $upper\n" );
+    write_file( File::Spec->catfile( $nested, "$lower.md" ),  "# $upper\n" );
     write_file( File::Spec->catfile( $nested, "$lower.png" ), '' );
     write_file(
         File::Spec->catfile( $nested, 'index.md' ),
@@ -1975,14 +2010,19 @@ CPP
     ( $code, $out ) = run_checker( $link_checker, $nested );
     is( $code, 0, 'Unicode documentation root resolves relative links' );
 
-    write_file( File::Spec->catfile( $docs, 'index.md' ),
-        "[broken](page.md#$lower-missing)\n" );
+    write_file(
+        File::Spec->catfile( $docs, 'index.md' ),
+        "[broken](page.md#$lower-missing)\n"
+    );
     ( $code, $out ) = run_checker( $link_checker, $docs );
     is( $code, 1, 'valid Unicode missing fragment keeps link-failure status' );
     like( $out, qr/\Q$lower\E-missing/,
         'missing fragment diagnostic renders UTF-8 bytes' );
-    unlike( $out, qr/Wide character/,
-        'Unicode diagnostics do not emit Perl encoding warnings' );
+    unlike(
+        $out,
+        qr/Wide character/,
+        'Unicode diagnostics do not emit Perl encoding warnings'
+    );
 
     for my $component ( 'page.md#%C3%28', '%C3%28.md', '%00.md', '%GG.md' ) {
         write_file( File::Spec->catfile( $docs, 'index.md' ),
