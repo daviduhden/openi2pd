@@ -3092,3 +3092,37 @@ reports KERNELBASE.DLL failing during DLL_PROCESS_ATTACH. A conhost
 process reported access denied nearby; causality and the failing internal
 operation remain unproven. The closed restricted-token probe also fails,
 so AppContainer is not established as necessary for the symptom.
+
+## 48680786 loader and sanitizer evidence
+
+RT-087 recurred in MSVC 19.44.35230.0 on
+48680786664c71045cbbee002f549332eec4d1f9. The closed child returned
+3221225794 (0xC0000142) before authentication. Artifact 14746630454 identifies
+image SHA-256
+`73F947317FC825B6AFC733671E4A6C0E4C8D91264C6961F9780873CCD000C5D0`.
+The matched kernelbase.pdb GUID/age is `0792E1E7A24BB52249313BF74137D2B11`.
+The loader snaps show KERNELBASE DLL_PROCESS_ATTACH at RVA 0x1b170 failing.
+The adjacent conhost exit belongs to a separate process and its causal
+relationship remains unproven. Keep the startup failure open and retain
+containment.
+[MSVC job](https://github.com/daviduhden/openi2pd/actions/runs/44999485726/job/137137652999)
+
+The three sanitizer jobs and the instrumented OpenSSL TSan diagnostic
+completed without a sanitizer finding in the reviewed logs. Bounded
+fuzzing ran with detect_leaks=0. The provider job emitted a runner
+Landlock ABI 8 restriction caveat.
+[Validation](https://github.com/daviduhden/openi2pd/actions/runs/44999485763)
+[Provider TSan](https://github.com/daviduhden/openi2pd/actions/runs/44999485742)
+
+**RT-486-01.** The API 29 x86_64 XML for 48680786 reports
+`Broker ignored its own retirement` in
+`reboundBrokerAnswersTheWholeTypedSurface` and
+`retireIsGenerationFencedAndRebindYieldsANewGeneration`.
+Review of the SAF AIDL and Java broker found that both oneway
+cancellation operations read Binder's calling PID. A oneway remote
+transaction does not carry a usable calling PID for that check.
+Ownership still needs to be tied to the validated caller and the exact
+active generation or operation. Keep both positive retirement and
+foreign-authority rejection fixtures, and add real cross-process
+cancellation evidence before marking it validated.
+[API 29 job](https://github.com/daviduhden/openi2pd/actions/runs/44999485666/job/137137652481)

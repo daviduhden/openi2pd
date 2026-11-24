@@ -2719,3 +2719,14 @@ CE-076-01 and TF-076-01..03 corrections are Implemented / static; Pending
 CI tests. RT-076-01 fixes JNI conversion member lifetime and bounds the UI
 phase; exact completion evidence remains pending. RT-087 remains CI
 failure. See [batch outcomes](docs/ci/TEST-FAILURES.md#076ddcb7-manual-batch).
+
+## 48680786 manual CI follow-up
+
+The [exact batch](docs/ci/TEST-FAILURES.md#48680786-manual-batch) supplies
+native build, sanitizer, fuzz and packaging evidence. MSVC startup (RT-087),
+Android API 29 and optional Perl quality remain CI failure. Perl capture
+corrections are Implemented / static and Pending CI tests.
+Android catalog and instrumentation fixture corrections and the OpenBSD
+credential coverage correction are Implemented / static and Pending CI
+tests. SAF broker retirement and cancellation authority remain Correction
+pending. Investigate Windows startup without expanding worker privileges.

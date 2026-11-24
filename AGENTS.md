@@ -3295,3 +3295,9 @@ Review JNI initializer calls that write through another member against
 the member declaration order. Add input controls that allocate storage
 and exercise both exact input caps and rejected input. Bound device
 instrumentation separately from the enclosing job so evidence can upload.
+
+For Perl parser and inventory fixes, bind captures to lexical match results
+before consuming them across guards, and use definedness when the grammar
+allows empty or zero values. Distinguish passing Test::More results from a
+later Perl::Critic exit. For interoperability, record when a pinned reference
+and vectors pass but a differential binary was not supplied.

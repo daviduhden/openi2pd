@@ -167,6 +167,15 @@ A no-op mutation failing is a fixture defect, not a product runtime failure.
   artifacts in the tree. Use the repository Critic profile and report every
   unresolved diagnostic instead of lowering severity or adding suppressions.
 
+- Run the installed bulk formatters against a projection of tracked and
+  intended untracked inputs. Compare its output to the pre-format snapshot
+  before copying back, and preserve executable modes. The installed
+  `validate-perl` wrapper defaults to severity 5 and discovers scripts by
+  extension. Run `.perlcriticrc` separately and include the extensionless
+  `tools/scripts/i2pdctl` to match the repository inventory.
+- Before replacing `return undef` with an empty return, check all callers.
+  Scalar absence is preserved, but list-context cardinality changes.
+
 
 - Android maintenance producers join three inventories: recursive discovery,
   the expected script list in tools/tests/perl-portability.t, and both CMake

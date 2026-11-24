@@ -1336,3 +1336,30 @@ TF-076-02 for the failed check and portable source correction. The
 Android arm64 Kotlin opt-out/ChromeOS notices persist. The UI job
 reported Java Unsafe use inside third-party protobuf-java 3.25.5.
 The warning does not identify the instrumentation stall.
+
+## 48680786 warning review
+
+Full native build logs in the [exact run matrix](TEST-FAILURES.md#48680786-manual-batch)
+provide no new first-party compiler or linker warning matching the
+reviewed diagnostic forms. This is scoped to the jobs and flags in that batch.
+Android Lint reported `ChromeOsAbiSupport` on the arm64 Gradle variants.
+The API 29 job uses an x86_64 emulator build, which does not establish
+x86_64 production APK coverage.
+[Android arm64 job](https://github.com/daviduhden/openi2pd/actions/runs/44999485666/job/137137652257)
+
+The MSYS2 update issued its restart warning and a Windows diagnostic reported
+an unverified executable checksum. These are tool diagnostics. OpenBSD's
+root suite emitted the disposable account's missing-home warning, and SSH
+emitted guest host-key registration notices.
+[Windows](https://github.com/daviduhden/openi2pd/actions/runs/44999485726)
+[OpenBSD](https://github.com/daviduhden/openi2pd/actions/runs/44999485867)
+
+The local OpenBSD credential fixture now assigns the existing system
+`/var/empty` as the disposable user's non-writable home and checks it
+as that user before CTest. This removes the missing-home cause without
+creating another directory or broadening write authority. Pending CI tests.
+
+Android toolchain output also notes the AGP built-in Kotlin opt-out
+and a transitive protobuf 3.25.5 Unsafe deprecation. The Java 25 source
+target and AGP workaround stay in place. Recheck them against the AGP
+classpath when its toolchain advances.

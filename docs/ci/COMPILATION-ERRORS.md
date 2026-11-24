@@ -2537,3 +2537,12 @@ Reply, error, timeout and removal paths use the same record. The sibling
 UDP tracker registry uses a different construction path. The original
 Clang 17 compile and existing DHT suite are the validation lane.
 Pending CI compilation and tests.
+
+## 48680786 build and link follow-up
+
+The retained full logs for 48680786664c71045cbbee002f549332eec4d1f9
+show the GCC 13 and Clang 17 DHT compile barrier cleared, including the
+Clang/libstdc++ 13 tuple-instantiation lane. Windows, OpenBSD,
+Homebrew OpenSSL 3/4 and Android built far enough to execute tests.
+The three workflow failures occurred after compilation. See the
+[exact run matrix](TEST-FAILURES.md#48680786-manual-batch).

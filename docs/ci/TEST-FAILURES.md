@@ -1854,3 +1854,53 @@ host-mounted static-out directory. The runner now creates that directory
 before the container writes packages. This keeps checksums under runner
 authority. Pending CI tests.
 [Static package job](https://github.com/daviduhden/openi2pd/actions/runs/44949202814/job/136983194867)
+
+## 48680786 manual batch
+
+Paginated Actions metadata returned 665 runs across 93 SHAs (265 successful,
+331 failed and 69 cancelled). The ten complete run logs below cover
+48680786664c71045cbbee002f549332eec4d1f9. Conclusions describe that revision.
+
+| Run | Observed outcome |
+|---|---|
+| [Linux](https://github.com/daviduhden/openi2pd/actions/runs/44999485705) | GCC 13.3 and Clang 17.0.6 with libstdc++ 13 and system OpenSSL 3.0.13 each passed 279 tests. Component install passed. The interop job checked pinned refs and historical vectors, with two known gaps and no differential binary supplied. |
+| [OpenSSL 3](https://github.com/daviduhden/openi2pd/actions/runs/44999485734) | GCC 16.2 and Clang 23.1.6 with 3.5.9 each passed 279 tests and the focused selections. |
+| [OpenSSL 4](https://github.com/daviduhden/openi2pd/actions/runs/44999485630) | GCC 16.2 and Clang 23.1.6 with 4.1.0 each passed 279 tests and the focused selections. |
+| [OpenBSD](https://github.com/daviduhden/openi2pd/actions/runs/44999485867) | Clang 22.1.6 and LibreSSL 4.4.0 selected 274 tests, with three root-phase skips. Two non-root credential tests passed separately. |
+| [Windows](https://github.com/daviduhden/openi2pd/actions/runs/44999485726) | MSYS2 Clang64 selected 263 tests with one expected POSIX-only skip. MSVC passed 35 of 36 in the focused selection. The supervisor failed before authentication (RT-087). |
+| [Android](https://github.com/daviduhden/openi2pd/actions/runs/44999485666) | Arm64 build and JVM checks passed. API 29 ran 64 instrumentation cases with seven failures. Production signing was skipped. |
+| [Validation](https://github.com/daviduhden/openi2pd/actions/runs/44999485763) | 279 selected in each of ASan+UBSan, UBSan and TSan with no failures. Fuzz smoke passed 15/15. Source documentation and agent checks passed. Optional Perl quality failed at Perl::Critic. |
+| [Instrumented OpenSSL TSan](https://github.com/daviduhden/openi2pd/actions/runs/44999485742) | The focused provider test passed. |
+| [Packaging](https://github.com/daviduhden/openi2pd/actions/runs/44999485787) | Debian, static musl, container image, service matrix and service contracts passed. |
+| [Agent knowledge](https://github.com/daviduhden/openi2pd/actions/runs/44999485631) | Synchronization gate passed. |
+
+**TF-486-01.** Perl Test::More completed before Perl::Critic exited 2.
+The report contains 962 findings, including seven
+`ProhibitCaptureWithoutTest` records in the TOML parser, doc link and nav
+checkers, workflow checker and portability fixture. Those sites now hold
+captures in lexical variables. The existing fixtures cover TOML parse/refusal,
+documentation inputs, workflow parsing and the two-way Perl inventory.
+Formatting and other policy findings remain open. Pending CI tests.
+[Perl quality job](https://github.com/daviduhden/openi2pd/actions/runs/44999485763/job/137137652576)
+
+**TF-486-02.** The API 29 x86_64 job ran the built debug APK and
+recorded seven failures in its downloaded instrumentation XML. One
+`LocaleResourceTest` assertion found the zh-CN catalog missing. Three
+`UiContractTest` fixtures inflated animated Material views off the main
+thread. `UiDialogLifecycleTest` clicked the address book action while its
+initial asynchronous refresh could still reject it. The local revision
+selects the packaged locale by its resource qualifier, checks the real
+debug and release APKs and synchronizes the affected fixtures with their
+UI prerequisites. Pending CI tests. Two separate broker-contract failures
+remain under RT-486-01.
+[API 29 job](https://github.com/daviduhden/openi2pd/actions/runs/44999485666/job/137137652481)
+
+**TF-486-03.** OpenBSD's non-root credential XML counted two passes,
+yet the credential test printed `supplementary groups present, skipping
+the drop check` and returned success. A separate root-started CTest
+fixture now seeds a supplementary group in a forked child and verifies
+the production drop to the provisioned non-root account. The ordinary
+non-root fixture still checks that an unprivileged caller cannot clear
+supplementary groups. The root-started binary runs from a root-owned
+directory and has a separate required JUnit result. Pending CI tests.
+[OpenBSD job](https://github.com/daviduhden/openi2pd/actions/runs/44999485867/job/137137661029)

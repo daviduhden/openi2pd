@@ -1024,3 +1024,18 @@ must occur after that member is constructed. Bound the whole device
 test before collecting failure evidence. For container artifacts,
 provision runner-owned output directories before root-in-container
 writes when a later host step must create manifests.
+
+## Review each execution boundary
+
+An Android JVM pass and native build can coexist with API 29 instrumentation
+failures. Record the instrumentation count, test identity and report separately
+from APK build and signing. A successful historical vector lane with no
+differential binary supplies evidence for the vectors it ran. Record the
+unexecuted differential cases separately. See
+[48680786 outcomes](TEST-FAILURES.md#48680786-manual-batch).
+
+A successful JUnit case can omit an entire capability branch by returning
+success early. Compare the test's diagnostics with the claimed coverage.
+For a credential-drop positive control, start the fixture under the
+authority the operation requires and assert the effective IDs and group
+set in the child. Exercise the non-root refusal separately.

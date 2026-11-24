@@ -632,3 +632,13 @@ operation and mapped type as well as the compiler and standard library
 pair. A named domain record avoids incidental nested tuple constraints
 while keeping the pending-query fields explicit. Separately, check
 script-mode CMake operators under the oldest exercised toolchain.
+
+## Perl match results across guards
+
+When a parser or build-inventory check needs a capture after a guard,
+store the match result in a lexical variable and check it for definedness.
+This ties the consumed value to the current input and preserves empty or
+zero captures where the grammar accepts them. The 48680786 review applied
+this to TOML tokens, Markdown fragments, navigation entries, workflow
+triggers and CMake list extraction. See
+[TF-486-01](TEST-FAILURES.md#48680786-manual-batch).

@@ -793,3 +793,13 @@ after the documentation boundary. On a distro CMake failure inspect
 script-mode policy defaults. For bind-mounted package outputs, establish
 runner directory ownership before container execution when host-side
 checksums or provenance must be written.
+
+For a successful interop job, inspect whether the differential runner was
+given a binary and record which vectors or source checks actually ran.
+Record the Test::More and Perl::Critic outcomes separately when both commands
+share a job. An API 29 result is separate from JVM, APK and signing outcomes.
+
+In shell cleanup guards, quote literal dot and dot-dot case alternatives.
+They retain their POSIX matching behavior and avoid a false source-command
+match in `checkbashisms`. Record ShellCheck and portability outcomes
+separately.
