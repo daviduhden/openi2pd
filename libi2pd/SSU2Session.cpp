@@ -1409,8 +1409,7 @@ namespace transport
 
 		uint8_t kh2[32];
 		auto cleanseHeaderKey = i2p::modern::ScopeExit ([&kh2] { OPENSSL_cleanse (kh2, sizeof (kh2)); });
-		if (!i2p::crypto::HKDF (m_NoiseState->m_CK, nullptr, 0, "SessCreateHeader", kh2,
-			32)) return false;
+		if (!i2p::crypto::HKDF (m_NoiseState->m_CK, nullptr, 0, "SessCreateHeader", kh2, 32)) return false;
 		// fill packet
 		Header & header = m_SentHandshakePacket->header;
 		uint8_t *headerX = m_SentHandshakePacket->headerX, *payload = m_SentHandshakePacket->payload;
@@ -1540,8 +1539,7 @@ namespace transport
 		memcpy (header.buf, buf, 16);
 		header.ll[0] ^= CreateHeaderMask (m_Address->i, buf + (len - 24));
 		uint8_t kh2[32];
-		if (!i2p::crypto::HKDF (m_NoiseState->m_CK, nullptr, 0, "SessCreateHeader", kh2,
-			32)) return failHandshake ();
+		if (!i2p::crypto::HKDF (m_NoiseState->m_CK, nullptr, 0, "SessCreateHeader", kh2, 32)) return failHandshake ();
 		header.ll[1] ^= CreateHeaderMask (kh2, buf + (len - 12));
 		if (header.h.type != eSSU2SessionCreated)
 			// this situation is valid, because it might be Retry with different
@@ -1654,8 +1652,7 @@ namespace transport
 		m_SentHandshakePacket->sendTime = i2p::util::GetMillisecondsSinceEpoch ();
 
 		uint8_t kh2[32];
-		if (!i2p::crypto::HKDF (m_NoiseState->m_CK, nullptr, 0, "SessionConfirmed", kh2,
-			32)) return false;
+		if (!i2p::crypto::HKDF (m_NoiseState->m_CK, nullptr, 0, "SessionConfirmed", kh2, 32)) return false;
 
 		// Fragment 0 carries the 32-byte static key (+16 MAC) after the short
 		// header. The jumbo payload is one AEAD frame split over fragments.
@@ -1855,8 +1852,7 @@ namespace transport
 		memcpy (header.buf, buf, 16);
 		header.ll[0] ^= CreateHeaderMask (i2p::context.GetSSU2IntroKey (), buf + (len - 24));
 		uint8_t kh2[32];
-		if (!i2p::crypto::HKDF (m_NoiseState->m_CK, nullptr, 0, "SessionConfirmed", kh2,
-			32)) return false;
+		if (!i2p::crypto::HKDF (m_NoiseState->m_CK, nullptr, 0, "SessionConfirmed", kh2, 32)) return false;
 		header.ll[1] ^= CreateHeaderMask (kh2, buf + (len - 12));
 		if (header.h.connID != GetConnID ())
 		{

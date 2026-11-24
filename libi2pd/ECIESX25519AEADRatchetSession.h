@@ -402,8 +402,7 @@ namespace garlic
 		};
 
 		bool GenerateEphemeralKeysAndEncode (uint8_t * buf); // buf is 32 bytes
-		bool InitNewSessionTagset (std::shared_ptr<RatchetTagSet> tagsetNsr,
-			const uint8_t * chainKey) const;
+		bool InitNewSessionTagset (std::shared_ptr<RatchetTagSet> tagsetNsr, const uint8_t * chainKey) const;
 		void RestoreNewSessionState ();
 
 		void SetSendTagset (std::shared_ptr<RatchetTagSet> tagset);

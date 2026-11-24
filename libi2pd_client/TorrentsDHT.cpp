@@ -1766,8 +1766,10 @@ namespace torrents
 		auto msg = CreateDictionary ({ { "a", arguments }, { "q", CreateByteString (KRPCQueryStr[query]) },
 			{ "t", CreateByteString (std::string_view ((const char *)&transactionID, sizeof (transactionID))) },
 			{ "y", CreateByteString ("q") } });
-		if (!m_Queries.try_emplace (transactionID,
-			PendingQuery { toIdent, toPort, query, std::move (info), i2p::util::GetMonotonicSeconds () }).second)
+		if (!m_Queries
+				.try_emplace (transactionID,
+					PendingQuery { toIdent, toPort, query, std::move (info), i2p::util::GetMonotonicSeconds () })
+				.second)
 			return;
 		if (isRaw)
 			SendRawDatagram (msg, toIdent, toPort);
@@ -2145,8 +2147,7 @@ namespace torrents
 				const auto & pending = it->second;
 				if (ts > pending.sentAtSeconds + DHT_QUERY_EXPIRATION_TIME)
 				{
-					if (m_FailedPeers.contains (pending.peer)
-						|| m_FailedPeers.size () < MAX_DHT_FAILED_PEERS)
+					if (m_FailedPeers.contains (pending.peer) || m_FailedPeers.size () < MAX_DHT_FAILED_PEERS)
 						m_FailedPeers.insert_or_assign (pending.peer, ts);
 					switch (pending.query)
 					{
@@ -2155,8 +2156,7 @@ namespace torrents
 						// A ping query only stores the peer identity. Resolve
 						// the routing-table node so the heard-from window is
 						// checked against its node ID, not the peer hash.
-						auto node
-							= m_RoutingTable ? m_RoutingTable->FindNodeByPeer (pending.peer) : nullptr;
+						auto node = m_RoutingTable ? m_RoutingTable->FindNodeByPeer (pending.peer) : nullptr;
 						if (node && !m_HeardFrom.contains (node->id)) m_RoutingTable->RemoveNodeByPeer (node->peer);
 						break;
 					}

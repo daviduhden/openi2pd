@@ -1059,11 +1059,12 @@ namespace data
 			if (authDataLen > 0)
 			{
 				memcpy (innerInput + 32, subcredential, 36);
-				if (!i2p::crypto::HKDF (outerPlainText.data () + 1 + authDataLen, innerInput, 68, "ELS2_L2K", keys)) return;
+				if (!i2p::crypto::HKDF (outerPlainText.data () + 1 + authDataLen, innerInput, 68, "ELS2_L2K", keys))
+					return;
 			}
 			else
-				// no authData presented, innerInput = subcredential ||
-				// publishedTimestamp skip 1 byte flags
+			// no authData presented, innerInput = subcredential ||
+			// publishedTimestamp skip 1 byte flags
 			{
 				if (!i2p::crypto::HKDF (outerPlainText.data () + 1, subcredential, 36, "ELS2_L2K", keys)) return;
 			}
@@ -1783,10 +1784,12 @@ namespace data
 			m_Buffer.reset ();
 			return;
 		}
-		auto discardIncomplete = i2p::modern::ScopeExit ([this] {
-			m_BufferLen = 0;
-			m_Buffer.reset ();
-		});
+		auto discardIncomplete = i2p::modern::ScopeExit (
+			[this]
+			{
+				m_BufferLen = 0;
+				m_Buffer.reset ();
+			});
 		if (!i2p::crypto::HKDF (m_Buffer.get () + offset, subcredential, 36, "ELS2_L1K", keys1)) return;
 		offset += 32; // outerSalt
 		uint8_t * outerPlainText = m_Buffer.get () + offset;

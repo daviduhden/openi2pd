@@ -263,9 +263,8 @@ void TestTrackerRegistryApi ()
 		assert (tunnel.AddTracker (announce, false) == static_cast<int> (i));
 	}
 	// The first URL fits; the second must refuse the entire batch.
-	const std::array<std::string_view, 2> batch {
-		"http://tracker-new.i2p/announce", "http://tracker-extra.i2p/announce"
-	};
+	const std::array<std::string_view, 2> batch { "http://tracker-new.i2p/announce",
+		"http://tracker-extra.i2p/announce" };
 	assert (!tunnel.AddCommonTrackers (batch));
 	assert (tunnel.GetNumTrackers () == MAX_NUM_TRACKERS - 1);
 	assert (tunnel.GetTrackerAnnounce (MAX_NUM_TRACKERS - 1).empty ());

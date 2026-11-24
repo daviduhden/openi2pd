@@ -1402,8 +1402,8 @@ void TestRPCMetadataFields ()
 	assert (tunnel->GetNumTrackers () == trackerCount);
 	boost::asio::ip::tcp::socket validBatch (clientService);
 	validBatch.connect (server.GetEndpoint ());
-	const auto validRequest = RpcPost (
-		R"({"method":"torrent-set","arguments":{"trackerAdd":["http://batch.i2p/announce"]}})");
+	const auto validRequest
+		= RpcPost (R"({"method":"torrent-set","arguments":{"trackerAdd":["http://batch.i2p/announce"]}})");
 	boost::asio::write (validBatch, boost::asio::buffer (validRequest));
 	assert (ReadClosedRPC (validBatch).find (R"("result":"success")") != std::string::npos);
 	assert (tunnel->GetNumTrackers () == trackerCount + 1);
@@ -1425,8 +1425,8 @@ void TestRPCExpiredRequestDoesNotMutate ()
 	const auto trackerCount = tunnel->GetNumTrackers ();
 	boost::asio::ip::tcp::socket client (clients);
 	client.connect (server.GetEndpoint ());
-	const auto request = RpcPost (
-		R"({"method":"torrent-set","arguments":{"trackerAdd":["http://expiry.i2p/announce"]}})");
+	const auto request
+		= RpcPost (R"({"method":"torrent-set","arguments":{"trackerAdd":["http://expiry.i2p/announce"]}})");
 	boost::asio::write (client, boost::asio::buffer (request));
 	// The engine has no running thread, so expiry must precede admission.
 	const auto response = ReadClosedRPC (client);

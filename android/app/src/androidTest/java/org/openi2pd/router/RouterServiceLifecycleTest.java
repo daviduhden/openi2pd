@@ -82,22 +82,22 @@ public final class RouterServiceLifecycleTest {
         try {
             assertTrue(AutoStartController.setEnabled(context, true, false));
             assertTrue(state.edit()
-                               .putBoolean("should_run", false)
-                               .putString("run_phase", "stopped")
-                               .putLong("graceful_deadline_epoch_ms", 0L)
-                               .commit());
+                            .putBoolean("should_run", false)
+                            .putString("run_phase", "stopped")
+                            .putLong("graceful_deadline_epoch_ms", 0L)
+                            .commit());
             receiver.onReceive(receiverContext, boot);
             assertNull("stopped router must not request service start", receiverContext.request);
-            assertFalse("the persisted run must stay stopped",
-                    RouterService.isStartRequested(context));
+            assertFalse(
+                    "the persisted run must stay stopped", RouterService.isStartRequested(context));
             assertEquals("stopped", state.getString("run_phase", null));
 
             // A running intent with the same enabled marker reaches the
             // interceptor and carries the sticky-restore command.
             assertTrue(state.edit()
-                               .putBoolean("should_run", true)
-                               .putString("run_phase", "running")
-                               .commit());
+                            .putBoolean("should_run", true)
+                            .putString("run_phase", "running")
+                            .commit());
             receiver.onReceive(receiverContext, boot);
             assertNotNull("running intent must request service restore", receiverContext.request);
             assertEquals(new ComponentName(context, RouterService.class),

@@ -228,7 +228,8 @@ static void TestColumnBudget ()
 
 	// Simulate repeated shrinking and growing of one localized row.
 	// The combining mark follows its base and the wide glyph is atomic.
-	const std::string_view mixed = "e\xCC\x81\xE4\xB8\xAD" "A";
+	const std::string_view mixed = "e\xCC\x81\xE4\xB8\xAD"
+								   "A";
 	assert (text::FitLength (mixed, 4) == 7);
 	assert (text::FitLength (mixed, 2) == 3);
 	assert (text::FitLength (mixed, 3) == 6);

@@ -57,10 +57,12 @@ namespace garlic
 	{
 		// DH_INITIALIZE(rootKey, k)
 		uint8_t keydata[64], tagKeys[64];
-		i2p::modern::ScopeExit cleanseKeydata ([&] {
-			OPENSSL_cleanse (keydata, sizeof (keydata));
-			OPENSSL_cleanse (tagKeys, sizeof (tagKeys));
-		});
+		i2p::modern::ScopeExit cleanseKeydata (
+			[&]
+			{
+				OPENSSL_cleanse (keydata, sizeof (keydata));
+				OPENSSL_cleanse (tagKeys, sizeof (tagKeys));
+			});
 		if (!i2p::crypto::HKDF (rootKey, k, 32, "KDFDHRatchetStep", keydata)
 			|| !i2p::crypto::HKDF (keydata + 32, nullptr, 0, "TagAndKeyGenKeys", tagKeys))
 			return false;
@@ -103,8 +105,7 @@ namespace garlic
 			LogPrint (eLogError, "Garlic: Tagset ", GetTagSetID (), " is empty");
 			return false;
 		}
-		if (!hkdfCtx (m_SessionTagKeyData, m_SessTagConstant, 32, "SessionTagKeyGen", prepared.keyData))
-			return false;
+		if (!hkdfCtx (m_SessionTagKeyData, m_SessTagConstant, 32, "SessionTagKeyGen", prepared.keyData)) return false;
 		prepared.index = m_NextIndex;
 		return true;
 	}
@@ -901,12 +902,12 @@ namespace garlic
 				LogPrint (eLogWarning, "Garlic: Invalid reverse next key ", keyID);
 				return;
 			}
-			if (!i2p::crypto::HKDF (sharedSecret, nullptr, 0, "XDHRatchetTagSet", tagsetKey,
-				32)) return;
+			if (!i2p::crypto::HKDF (sharedSecret, nullptr, 0, "XDHRatchetTagSet", tagsetKey, 32)) return;
 			auto newTagset = std::make_shared<RatchetTagSet> ();
 			newTagset->SetTagSetID (1 + m_NextSendRatchet->keyID + keyID);
 			if (!newTagset->DHInitialize (m_SendTagset->GetNextRootKey (), tagsetKey)
-				|| !newTagset->NextSessionTagRatchet ()) return;
+				|| !newTagset->NextSessionTagRatchet ())
+				return;
 			if (hasKey)
 			{
 				memcpy (m_NextSendRatchet->remote, remote, 32);
@@ -1001,11 +1002,11 @@ namespace garlic
 				LogPrint (eLogWarning, "Garlic: Invalid forward next key ", keyID);
 				return;
 			}
-			if (!i2p::crypto::HKDF (sharedSecret, nullptr, 0, "XDHRatchetTagSet", tagsetKey,
-				32)) return;
+			if (!i2p::crypto::HKDF (sharedSecret, nullptr, 0, "XDHRatchetTagSet", tagsetKey, 32)) return;
 			auto newTagset = std::make_shared<ReceiveRatchetTagSet> (shared_from_this ());
 			if (!newTagset->DHInitialize (receiveTagset->GetNextRootKey (), tagsetKey)
-				|| !newTagset->NextSessionTagRatchet ()) return;
+				|| !newTagset->NextSessionTagRatchet ())
+				return;
 			if (!m_NextReceiveRatchet) m_NextReceiveRatchet.reset (new DHRatchet ());
 			m_NextReceiveRatchet->keyID = keyID;
 			m_NextReceiveRatchet->key = key;
@@ -1409,16 +1410,13 @@ namespace garlic
 		if (!i2p::crypto::HKDF (m_CK, nullptr, 0, "", keydata)) return false;
 		// k_ab = keydata[0:31], k_ba = keydata[32:63]
 		auto receiveTagset = std::make_shared<ReceiveRatchetTagSet> (shared_from_this ());
-		if (!receiveTagset->DHInitialize (m_CK, keydata)
-			|| !receiveTagset->NextSessionTagRatchet ()) return false;
+		if (!receiveTagset->DHInitialize (m_CK, keydata) || !receiveTagset->NextSessionTagRatchet ()) return false;
 		auto sendTagset = std::make_shared<RatchetTagSet> ();
-		if (!sendTagset->DHInitialize (m_CK, keydata + 32)
-			|| !sendTagset->NextSessionTagRatchet ()) return false;
+		if (!sendTagset->DHInitialize (m_CK, keydata + 32) || !sendTagset->NextSessionTagRatchet ()) return false;
 		uint8_t payloadKey[32];
 		i2p::modern::ScopeExit cleansePayloadKey (
 			[&payloadKey] () { OPENSSL_cleanse (payloadKey, sizeof (payloadKey)); });
-		if (!i2p::crypto::HKDF (keydata + 32, nullptr, 0, "AttachPayloadKDF", payloadKey,
-			32)) return false;
+		if (!i2p::crypto::HKDF (keydata + 32, nullptr, 0, "AttachPayloadKDF", payloadKey, 32)) return false;
 		// encrypt payload
 		if (offset + len + 16 > outLen)
 		{
@@ -1557,13 +1555,10 @@ namespace garlic
 		// derives a new split. Install it only after the payload is
 		// authenticated. k_ab = keydata[0:31], k_ba = keydata[32:63]
 		auto sendTagset = std::make_shared<RatchetTagSet> ();
-		if (!sendTagset->DHInitialize (m_CK, keydata)
-			|| !sendTagset->NextSessionTagRatchet ()) return false;
+		if (!sendTagset->DHInitialize (m_CK, keydata) || !sendTagset->NextSessionTagRatchet ()) return false;
 		auto receiveTagset = std::make_shared<ReceiveRatchetTagSet> (shared_from_this ());
-		if (!receiveTagset->DHInitialize (m_CK, keydata + 32)
-			|| !receiveTagset->NextSessionTagRatchet ()) return false;
-		if (!i2p::crypto::HKDF (keydata + 32, nullptr, 0, "AttachPayloadKDF", keydata,
-			32)) return false;
+		if (!receiveTagset->DHInitialize (m_CK, keydata + 32) || !receiveTagset->NextSessionTagRatchet ()) return false;
+		if (!i2p::crypto::HKDF (keydata + 32, nullptr, 0, "AttachPayloadKDF", keydata, 32)) return false;
 		// decrypt payload
 		if (len < 16)
 		{

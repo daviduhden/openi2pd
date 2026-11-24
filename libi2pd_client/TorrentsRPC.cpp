@@ -59,7 +59,10 @@ namespace torrents
 	struct TorrentsRPCWork
 	{
 		explicit TorrentsRPCWork (std::shared_ptr<TorrentsRPCDispatch> gate)
-			: dispatch (std::move (gate)) { dispatch->pending.fetch_add (1); }
+			: dispatch (std::move (gate))
+		{
+			dispatch->pending.fetch_add (1);
+		}
 		~TorrentsRPCWork () { dispatch->pending.fetch_sub (1); }
 		const std::shared_ptr<TorrentsRPCDispatch> dispatch;
 		std::chrono::steady_clock::time_point deadline;
@@ -187,8 +190,10 @@ namespace torrents
 			Outcome outcome;
 			try
 			{
-				if constexpr (std::is_void_v<OperationResult>) operation ();
-				else outcome.value = operation ();
+				if constexpr (std::is_void_v<OperationResult>)
+					operation ();
+				else
+					outcome.value = operation ();
 				outcome.success = true;
 			}
 			catch (...)
@@ -467,9 +472,7 @@ namespace torrents
 						std::back_inserter (s.hexHash));
 					return s;
 				});
-			if (!summary.success)
-				return ErrorResponse (
-					GetTag (jsonRequest), RPC_SERVICE_FAILURE_ERROR);
+			if (!summary.success) return ErrorResponse (GetTag (jsonRequest), RPC_SERVICE_FAILURE_ERROR);
 			torrentInfo["id"] = id;
 			torrentInfo["hashString"] = std::move (summary.value.hexHash);
 			torrentInfo["name"] = std::move (summary.value.name);
@@ -565,9 +568,7 @@ namespace torrents
 							return std::pair<boost::json::array, boost::json::array> (
 								std::move (row), std::move (rowHeader));
 						});
-					if (!outcome.success)
-						return ErrorResponse (GetTag (jsonRequest),
-							RPC_SERVICE_FAILURE_ERROR);
+					if (!outcome.success) return ErrorResponse (GetTag (jsonRequest), RPC_SERVICE_FAILURE_ERROR);
 					if (isFirst)
 					{
 						header = outcome.value.second;
@@ -579,9 +580,7 @@ namespace torrents
 				{
 					auto outcome = RunEngineOperation ([handler = *this, torrent, id, fields] ()
 						{ return handler.GetTorrentObject (torrent, id, fields); });
-					if (!outcome.success)
-						return ErrorResponse (GetTag (jsonRequest),
-							RPC_SERVICE_FAILURE_ERROR);
+					if (!outcome.success) return ErrorResponse (GetTag (jsonRequest), RPC_SERVICE_FAILURE_ERROR);
 					torrents.push_back (std::move (outcome.value));
 				}
 			}
@@ -1038,9 +1037,7 @@ namespace torrents
 				}
 				return statistics;
 			});
-		if (!outcome.success)
-			return ErrorResponse (
-				GetTag (jsonRequest), RPC_SERVICE_FAILURE_ERROR);
+		if (!outcome.success) return ErrorResponse (GetTag (jsonRequest), RPC_SERVICE_FAILURE_ERROR);
 
 		boost::json::object response, stats;
 		stats["downloadedBytes"] = outcome.value.downloaded;
@@ -1080,9 +1077,7 @@ namespace torrents
 					}
 					return stats;
 				});
-			if (!outcome.success)
-				return ErrorResponse (
-					GetTag (jsonRequest), RPC_SERVICE_FAILURE_ERROR);
+			if (!outcome.success) return ErrorResponse (GetTag (jsonRequest), RPC_SERVICE_FAILURE_ERROR);
 			response["numNodes"] = outcome.value.numNodes;
 			response["numBuckets"] = outcome.value.numBuckets;
 			response["numTorrents"] = outcome.value.numTorrents;
@@ -1110,12 +1105,11 @@ namespace torrents
 				const auto & announceString = it.as_string ();
 				std::string_view announce (announceString.data (), announceString.size ());
 				if (announce.empty () || announce.size () > MAX_TRACKER_ANNOUNCE_LENGTH
-					|| std::any_of (announce.begin (), announce.end (),
-						[] (unsigned char c) { return c <= 32 || c == 127; }))
+					|| std::any_of (
+						announce.begin (), announce.end (), [] (unsigned char c) { return c <= 32 || c == 127; }))
 					return ErrorResponse (GetTag (jsonRequest), "Invalid tracker");
 				const i2p::http::URL url (announce);
-				if ((url.schema != "http" && url.schema != "udp")
-					|| !IsI2PTrackerHost (url.host) || !url.user.empty ()
+				if ((url.schema != "http" && url.schema != "udp") || !IsI2PTrackerHost (url.host) || !url.user.empty ()
 					|| !url.pass.empty () || url.ipv6)
 					return ErrorResponse (GetTag (jsonRequest), "Tracker is not a valid I2P announce URL");
 				validated.push_back (announce);
@@ -1274,39 +1268,39 @@ namespace torrents
 					m_EngineWork->deadline = expires;
 				}
 			}
-			if (!m_EngineWork)
-				return SendResponse (boost::beast::http::status::service_unavailable);
+			if (!m_EngineWork) return SendResponse (boost::beast::http::status::service_unavailable);
 
 			m_Deadline.expires_at (expires);
-			m_Deadline.async_wait ([weak = weak_from_this ()] (const boost::system::error_code & error)
-			{
-				if (error) return;
-				auto session = weak.lock ();
-				if (!session || !session->m_EngineWork) return;
-				auto work = std::exchange (session->m_EngineWork, nullptr);
-				bool started;
+			m_Deadline.async_wait (
+				[weak = weak_from_this ()] (const boost::system::error_code & error)
 				{
-					std::lock_guard lock (work->dispatch->mutex);
-					work->canceled = true;
-					started = work->admitted;
-				}
-				const auto status = started ? boost::beast::http::status::gateway_timeout
-					: boost::beast::http::status::service_unavailable;
-				try
-				{
-					session->SendResponse (
-						status, started ? "Torrent operation outcome unknown" : "Torrent operation did not start");
-				}
-				catch (...)
-				{
-					session->Close ();
-				}
-			});
+					if (error) return;
+					auto session = weak.lock ();
+					if (!session || !session->m_EngineWork) return;
+					auto work = std::exchange (session->m_EngineWork, nullptr);
+					bool started;
+					{
+						std::lock_guard lock (work->dispatch->mutex);
+						work->canceled = true;
+						started = work->admitted;
+					}
+					const auto status = started ? boost::beast::http::status::gateway_timeout
+												: boost::beast::http::status::service_unavailable;
+					try
+					{
+						session->SendResponse (
+							status, started ? "Torrent operation outcome unknown" : "Torrent operation did not start");
+					}
+					catch (...)
+					{
+						session->Close ();
+					}
+				});
 			// The queued job owns its bytes and reservation, and borrows the
 			// tunnel to avoid a cycle with its executor.
 			boost::asio::post (tunnel->GetService (),
-				[weak = weak_from_this (), target = std::weak_ptr<TorrentsTunnel> (tunnel),
-				 work = m_EngineWork, body = std::move (request.body ())] ()
+				[weak = weak_from_this (), target = std::weak_ptr<TorrentsTunnel> (tunnel), work = m_EngineWork,
+					body = std::move (request.body ())] ()
 				{
 					auto engine = target.lock ();
 					if (!engine) return;
@@ -1314,7 +1308,8 @@ namespace torrents
 					{
 						std::lock_guard lock (gate.mutex);
 						if (!gate.replies || gate.generation != work->generation || work->canceled
-							|| std::chrono::steady_clock::now () >= work->deadline) return;
+							|| std::chrono::steady_clock::now () >= work->deadline)
+							return;
 						work->admitted = true;
 					}
 					try
@@ -1322,21 +1317,23 @@ namespace torrents
 						auto response = JSONRPCHandler (std::move (engine)).HandleRequest (body);
 						std::lock_guard lock (gate.mutex);
 						if (!gate.replies || gate.generation != work->generation || work->canceled) return;
-						boost::asio::post (*gate.replies, [weak, work, response = std::move (response)] ()
-						{
-							auto session = weak.lock ();
-							if (!session || session->m_Closed || session->m_EngineWork != work
-								|| std::chrono::steady_clock::now () >= work->deadline) return;
-							session->m_EngineWork.reset ();
-							try
+						boost::asio::post (*gate.replies,
+							[weak, work, response = std::move (response)] ()
 							{
-								session->SendResponse (boost::beast::http::status::ok, response);
-							}
-							catch (...)
-							{
-								session->Close ();
-							}
-						});
+								auto session = weak.lock ();
+								if (!session || session->m_Closed || session->m_EngineWork != work
+									|| std::chrono::steady_clock::now () >= work->deadline)
+									return;
+								session->m_EngineWork.reset ();
+								try
+								{
+									session->SendResponse (boost::beast::http::status::ok, response);
+								}
+								catch (...)
+								{
+									session->Close ();
+								}
+							});
 					}
 					catch (...)
 					{

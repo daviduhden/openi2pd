@@ -735,8 +735,8 @@ namespace torrents
 	void TorrentsTunnel::InitTorrentFiles (std::shared_ptr<Torrent> torrent)
 	{
 		if (!torrent || torrent->IsRemoved () || torrent->GetError () == eTorrentErrorMalformedMetaInfo) return;
-		const auto owner = std::weak_ptr<TorrentsTunnel> (
-			std::static_pointer_cast<TorrentsTunnel> (weak_from_this ().lock ()));
+		const auto owner
+			= std::weak_ptr<TorrentsTunnel> (std::static_pointer_cast<TorrentsTunnel> (weak_from_this ().lock ()));
 		if (!IsContainedPath (torrent->GetFullPath (), true))
 		{
 			LogPrint (eLogError, "TorrentsTunnel: Refusing to initialise torrent outside ", m_TorrentsDir);
@@ -913,8 +913,8 @@ namespace torrents
 			}
 		}
 
-		const bool hasPresentFiles =
-			std::any_of (presentFiles.begin (), presentFiles.end (), [] (bool value) { return value; });
+		const bool hasPresentFiles
+			= std::any_of (presentFiles.begin (), presentFiles.end (), [] (bool value) { return value; });
 		if (!resumeBitfield && !hasPresentFiles) return;
 		// Apply both disk observations before starting the verifier. An
 		// existing file or resume bit is a claim about bytes, and only
@@ -923,7 +923,7 @@ namespace torrents
 		auto relativeResume = resumeFilePath.lexically_relative (m_TorrentsDir);
 		boost::asio::post (GetService (),
 			[owner, torrent, hash, presentFiles = std::move (presentFiles), resumeBitfield = std::move (resumeBitfield),
-			 relativeResume = std::move (relativeResume), hasPresentFiles] ()
+				relativeResume = std::move (relativeResume), hasPresentFiles] ()
 			{
 				auto tunnel = owner.lock ();
 				if (!tunnel || tunnel->m_Stopping || torrent->IsRemoved () || tunnel->FindTorrent (hash) != torrent)
@@ -947,13 +947,14 @@ namespace torrents
 								auto active = owner.lock ();
 								auto current = instance.lock ();
 								if (!active || !current || active->m_Stopping || current->IsRemoved ()
-									|| active->FindTorrent (hash) != current) return;
+									|| active->FindTorrent (hash) != current)
+									return;
 								std::string removeError;
 								if (active->m_StorageWorker)
 									(void)active->m_StorageWorker->RemoveMetadata (relativeResume, removeError);
 								else if (!RemoveFileNoFollow (active->m_TorrentsDir, relativeResume, removeError))
-									LogPrint (eLogWarning,
-										"TorrentsTunnel: Can't remove invalid resume file: ", removeError);
+									LogPrint (
+										eLogWarning, "TorrentsTunnel: Can't remove invalid resume file: ", removeError);
 							});
 					}
 				}
@@ -3301,8 +3302,8 @@ namespace torrents
 		return ResolveTrackerSlotLocked (announce, isCommon, create, m_Trackers, m_TrackerSlots);
 	}
 
-	std::optional<size_t> TorrentsTunnel::ResolveTrackerSlotLocked (std::string_view announce, bool isCommon, bool create,
-		std::vector<TrackerInfo> & trackers, TrackerSlots & slots)
+	std::optional<size_t> TorrentsTunnel::ResolveTrackerSlotLocked (std::string_view announce, bool isCommon,
+		bool create, std::vector<TrackerInfo> & trackers, TrackerSlots & slots)
 	{
 		if (announce.empty ()
 			|| std::any_of (announce.begin (), announce.end (), [] (unsigned char c) { return c <= 32 || c == 127; }))
