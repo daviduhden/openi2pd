@@ -21,7 +21,7 @@ GetOptions( 'root=s' => \$root, 'write' => \$write )
 sub read_text {
     my ($path) = @_;
     open my $fh, '<:raw', $path or die "cannot read vector source\n";
-    local $/;
+    local $/ = undef;
     my $text = <$fh>;
     close $fh or die "cannot close vector source\n";
     return $text;
@@ -29,9 +29,11 @@ sub read_text {
 
 sub hundredths {
     my ($number) = @_;
-    $number =~ /\A(-?)(\d+)(?:\.(\d{1,2}))?\z/
+    my ( $sign, $whole, $fraction ) =
+      $number =~ / \A (-?) (\d+) (?: \. (\d{1,2}) )? \z /x;
+    defined $whole
       or die "vector precision or numeric syntax needs explicit review\n";
-    my ( $sign, $whole, $fraction ) = ( $1, $2, $3 // '' );
+    $fraction //= '';
     length($whole) <= 7 or die "vector coordinate exceeds producer bound\n";
     $fraction .= '0' while length($fraction) < 2;
     my $value = 100 * $whole + $fraction;
@@ -43,7 +45,7 @@ sub decimal {
     my $sign = $value < 0 ? '-' : '';
     $value = abs $value;
     my $fraction = sprintf '%02d', $value % 100;
-    $fraction =~ s/0+\z//;
+    $fraction =~ s/ 0+ \z //x;
     return
         $sign
       . int( $value / 100 )
@@ -58,7 +60,7 @@ sub absolute_commands {
     my @tokens;
     pos($path) = 0;
     while ( pos($path) < length($path) ) {
-        if ( $path =~ /\G\s*([MLCZmlcz]|-?\d+(?:\.\d+)?)\s*/gc ) {
+        if ( $path =~ / \G \s* ([MLCZmlcz] | -?\d+(?:\.\d+)?) \s* /gcx ) {
             push @tokens, $1;
         }
         else {
@@ -68,7 +70,7 @@ sub absolute_commands {
     my ( $command, $x, $y, $start_x, $start_y ) = ( '', 0, 0, 0, 0 );
     my @commands;
     while (@tokens) {
-        $command = shift @tokens if $tokens[0] =~ /\A[A-Za-z]\z/;
+        $command = shift @tokens if $tokens[0] =~ / \A [A-Za-z] \z /x;
         length($command) or die "vector operand lacks a command\n";
         my $kind = uc $command;
         if ( $kind eq 'Z' ) {
@@ -97,7 +99,7 @@ sub absolute_commands {
 
 sub compact {
     my ($commands) = @_;
-    my ( $x, $y, $start_x, $start_y, $last ) = ( 0, 0, 0, 0, '' );
+    my ( $x, $y, $start_x, $start_y, $previous_command ) = ( 0, 0, 0, 0, '' );
     my $result = '';
     for my $item ( @{$commands} ) {
         my ( $kind, @points ) = @{$item};
@@ -109,7 +111,9 @@ sub compact {
             }
         }
         $result .=
-          $command eq $last && $kind ne 'M' && $kind ne 'Z' ? ' ' : $command;
+          $command eq $previous_command && $kind ne 'M' && $kind ne 'Z'
+          ? ' '
+          : $command;
         $result .= join ' ', map { decimal($_) } @operands;
         if ( $kind eq 'Z' ) {
             ( $x, $y ) = ( $start_x, $start_y );
@@ -118,7 +122,7 @@ sub compact {
             ( $x,       $y )       = @points[ -2, -1 ];
             ( $start_x, $start_y ) = ( $x, $y ) if $kind eq 'M';
         }
-        $last = $command;
+        $previous_command = $command;
     }
     return $result;
 }
@@ -130,7 +134,7 @@ sub command_key {
 
 my $master =
   read_text( File::Spec->catfile( $root, 'assets', 'branding', 'symbol.svg' ) );
-my @master_paths = $master =~ /<path\b[^>]*\bd="([^"]+)"/g;
+my @master_paths = $master =~ / <path\b [^>]* \bd="([^"]+)" /gx;
 @master_paths == 4 or die "canonical symbol path inventory changed\n";
 my @commands      = map { absolute_commands($_) } @master_paths;
 my @compact_paths = map { compact($_) } @commands;
@@ -150,8 +154,8 @@ for my $name (
     my $path = File::Spec->catfile( $root, 'android', 'app', 'src', 'main',
         'res', 'drawable', "$name.xml" );
     my $text     = read_text($path);
-    my @paths    = $text =~ /android:pathData="([^"]+)"/g;
-    my $expected = $name =~ /monochrome\z/ ? 3 : 4;
+    my @paths    = $text =~ / android:pathData="([^"]+)" /gx;
+    my $expected = $name =~ / monochrome \z /x ? 3 : 4;
     @paths == $expected or die "Android symbol path inventory changed\n";
     for my $index ( 0 .. $#paths ) {
         command_key( absolute_commands( $paths[$index] ) ) eq
@@ -160,8 +164,8 @@ for my $name (
     }
     my $index   = 0;
     my $updated = $text;
-    $updated =~ s/android:pathData="[^"]+"/
-        'android:pathData="' . $compact_paths[$index++] . '"'/ge;
+    $updated =~ s/ android:pathData="[^"]+" /
+        'android:pathData="' . $compact_paths[$index++] . '"'/gex;
     push @outputs, [ $path, $text, $updated ];
 }
 
@@ -179,7 +183,7 @@ for my $output (@outputs) {
         );
         print {$fh} $updated or die "cannot write compact vector\n";
         close $fh            or die "cannot close compact vector\n";
-        chmod( ( stat $path )[2] & 07777, $temporary )
+        chmod( ( stat $path )[2] & oct('7777'), $temporary )
           or die "cannot preserve vector mode\n";
         rename $temporary, $path or die "cannot replace compact vector\n";
     }
