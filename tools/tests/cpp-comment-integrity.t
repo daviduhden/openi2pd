@@ -45,9 +45,9 @@ sub scan_comments {
             }
 
             my $rest = substr( $source, $offset );
-            if ( $rest =~ /\A(?:u8|u|U|L)?R"([^\s()\\]{0,16})\(/ ) {
-                my $delimiter = $1;
-                my $token     = $&;
+            my ( $token, $delimiter ) =
+              $rest =~ /\A((?:u8|u|U|L)?R"([^\s()\\]{0,16})\()/x;
+            if ( defined $token ) {
                 $raw_end = ")${delimiter}\"";
                 $offset += length $token;
                 $state = 'raw';

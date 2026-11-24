@@ -34,18 +34,20 @@ sub display_path {
     my $copy = $path;
     my $text = eval { decode( 'UTF-8', $copy, FB_CROAK ) };
     return $text unless $@;
-    return join '', map { $_ < 128 ? chr($_) : sprintf '\\x%02X', $_ }
-      unpack 'C*', $path;
+    return join '',
+      map { $_ < 128 ? chr($_) : sprintf '\\x%02X', $_ } unpack 'C*', $path;
 }
 
 binmode STDERR, ':encoding(UTF-8)' or die "cannot encode diagnostics\n";
 my $docs = path_octets( shift @ARGV // 'docs' );
 $docs =~ s{/+$}{};
-die "documentation directory not found: " . display_path($docs) . "\n" unless -d $docs;
+die "documentation directory not found: " . display_path($docs) . "\n"
+  unless -d $docs;
 
 my $root = path_octets( abs_path($docs) )
   or die "cannot resolve " . display_path($docs) . "\n";
-my $repo_root = path_octets( abs_path( File::Spec->catdir( $root, File::Spec->updir ) ) );
+my $repo_root =
+  path_octets( abs_path( File::Spec->catdir( $root, File::Spec->updir ) ) );
 die "cannot resolve repository root\n" unless defined $repo_root;
 
 # Cwd::abs_path() returns forward-slash paths on Windows while
@@ -84,13 +86,13 @@ sub is_inside_repository {
 sub resolved_target {
     my ( $path, $depth ) = @_;
     $depth //= 0;
-    return undef if $depth > 40;
+    return if $depth > 40;
     my $candidate = File::Spec->rel2abs($path);
     my @suffix;
     my $physical;
     while ( !defined( $physical = path_octets( abs_path($candidate) ) ) ) {
         my $parent = dirname($candidate);
-        return undef if $parent eq $candidate;
+        return if $parent eq $candidate;
         unshift @suffix, basename($candidate);
         $candidate = $parent;
     }
@@ -103,11 +105,11 @@ sub resolved_target {
         $candidate = File::Spec->catfile( $physical, $part );
         if ( -l $candidate ) {
             my $target = path_octets( readlink $candidate );
-            return undef unless defined $target;
+            return unless defined $target;
             $target = File::Spec->catfile( dirname($candidate), $target )
               unless File::Spec->file_name_is_absolute($target);
             $physical = resolved_target( $target, $depth + 1 );
-            return undef unless defined $physical;
+            return unless defined $physical;
             next;
         }
         my $resolved = path_octets( abs_path($candidate) );
@@ -137,12 +139,13 @@ my %anchor_cache;
 sub markdown_lines {
     my ($path) = @_;
     my $shown_path = display_path($path);
-    open my $fh, '<:raw', $path or die "cannot read Markdown file: $shown_path\n";
+    open my $fh, '<:raw', $path
+      or die "cannot read Markdown file: $shown_path\n";
     my $bytes = '';
     while (1) {
         my $count = read( $fh, my $chunk, 65536 );
         die "cannot read Markdown file: $shown_path\n" unless defined $count;
-        last                                     unless $count;
+        last                                           unless $count;
         $bytes .= $chunk;
     }
     close $fh or die "cannot close Markdown file: $shown_path\n";
@@ -236,7 +239,7 @@ sub anchors_for {
 my @missing;
 my @missing_anchors;
 for my $file ( sort @files ) {
-    my $shown_file = display_path($file);
+    my $shown_file  = display_path($file);
     my $in_fence    = 0;
     my $line_number = 0;
     for my $line ( @{ markdown_lines($file) } ) {
@@ -247,8 +250,7 @@ for my $file ( sort @files ) {
             my $target = $1;
             next if $target =~ m{\A(?:[a-z][a-z0-9+.-]*:|//)}i;
 
-            my $fragment;
-            $fragment = $1 if $target =~ /#(.*)\z/;
+            my ($fragment) = $target =~ / [#] (.*) \z /x;
             $target =~ s/[?#].*\z//;
             my $component_error;
             ( $target, $component_error ) = local_component($target);
@@ -272,7 +274,8 @@ for my $file ( sort @files ) {
             else {
                 my ( undef, $dir ) =
                   File::Spec->splitpath( File::Spec->rel2abs($file) );
-                $path = File::Spec->catfile( $dir, split m{/}, $filesystem_target );
+                $path =
+                  File::Spec->catfile( $dir, split m{/}, $filesystem_target );
             }
             my $resolved = resolved_target($path);
             if ( !defined $resolved ) {
@@ -294,7 +297,8 @@ for my $file ( sort @files ) {
             }
             if ( defined $fragment && $fragment ne '' && $path =~ /\.md\z/ ) {
                 my $anchors = anchors_for($path);
-                push @missing_anchors, "$shown_file:$line_number: $target#$fragment"
+                push @missing_anchors,
+                  "$shown_file:$line_number: $target#$fragment"
                   unless $anchors->{$fragment};
             }
         }
@@ -314,8 +318,9 @@ for my $file ( sort @files ) {
               File::Spec->splitpath( File::Spec->rel2abs($file) );
             my $path =
               $target =~ m{\A/}
-              ? File::Spec->catfile( $root, split m{/}, substr( $filesystem_target, 1 ) )
-              : File::Spec->catfile( $dir,  split m{/}, $filesystem_target );
+              ? File::Spec->catfile( $root, split m{/},
+                substr( $filesystem_target, 1 ) )
+              : File::Spec->catfile( $dir, split m{/}, $filesystem_target );
             my $resolved = resolved_target($path);
 
             if ( !defined $resolved ) {
@@ -323,7 +328,8 @@ for my $file ( sort @files ) {
                   "$shown_file:$line_number: $target (unresolvable path)";
                 next;
             }
-            push @missing, "$shown_file:$line_number: $target (escapes repository)"
+            push @missing,
+              "$shown_file:$line_number: $target (escapes repository)"
               unless is_inside_repository($resolved);
             push @missing, "$shown_file:$line_number: $target"
               if is_inside_repository($resolved) && !-e $path;

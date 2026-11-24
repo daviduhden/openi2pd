@@ -29,7 +29,8 @@ while ( my $line = <$fh> ) {
     $in_nav = 1 if $line =~ /^nav:\s*$/;
     last if $in_nav && $line =~ /^\S/ && $line !~ /^nav:/;
     next unless $in_nav;
-    push @nav, $1 if $line =~ /:\s+([A-Za-z0-9_.\/-]+\.md)\s*$/;
+    my ($page) = $line =~ / : \s+ ([A-Za-z0-9_.\/-]+\.md) \s* $ /x;
+    push @nav, $page if defined $page;
 }
 close $fh;
 

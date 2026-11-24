@@ -70,7 +70,8 @@ for my $file (@files) {
                 $in_on = 0;
                 next;
             }
-            push @triggers, $1 if $line =~ /^\s{2}([A-Za-z0-9_-]+):/;
+            my ($trigger) = $line =~ / ^ \s{2} ([A-Za-z0-9_-]+) : /x;
+            push @triggers, $trigger if defined $trigger;
             next;
         }
         if ( $line =~ /^\s*continue-on-error\s*:/ ) {
@@ -470,7 +471,7 @@ if ( defined $crypto_diagnostic ) {
 # checks, Perl quality, sanitizers and fuzzing). A job must live in its
 # owning workflow, and the former aggregate names must not return.
 my %split_jobs = (
-    'build-linux.yml'   => [qw(install-components interop system-openssl-floor)],
+    'build-linux.yml' => [qw(install-components interop system-openssl-floor)],
     'build-android.yml' => [qw(android android-ui android-sign)],
     'validation.yml'    =>
       [qw(source-docs skills-static perl-quality sanitizers fuzz-smoke)],
@@ -492,6 +493,7 @@ for my $file ( sort keys %split_jobs ) {
         $job_owner{$job} = $file;
     }
 }
+
 # Native compile failures must not hide the timer API policy itself.
 my $timer_guard_job   = $blocks_for{'validation.yml'}{'skills-static'} // '';
 my @timer_guard_lines = split /\n/, $timer_guard_job;
@@ -589,9 +591,10 @@ if ( exists $blocks_for{'validation.yml'}{'sanitizers'} ) {
 # a Perl::Critic run on every dispatch is a cost regression, and an
 # accidental `if:` removal is otherwise invisible until the job starts.
 my %input_gate = (
-    'build-linux.yml'   => { 'system-openssl-floor' => 'linux_floor_toolchains' },
-    'build-android.yml' => { 'android-ui' => 'android_ui', 'android-sign' => 'sign_release' },
-    'validation.yml'    => { 'perl-quality' => 'perl_style' },
+    'build-linux.yml' => { 'system-openssl-floor' => 'linux_floor_toolchains' },
+    'build-android.yml' =>
+      { 'android-ui' => 'android_ui', 'android-sign' => 'sign_release' },
+    'validation.yml' => { 'perl-quality' => 'perl_style' },
 );
 for my $file ( sort keys %input_gate ) {
     next unless exists $blocks_for{$file};
@@ -610,44 +613,69 @@ for my $file ( sort keys %input_gate ) {
 # Only the isolated, explicitly approved job can access signing secrets.
 if ( exists $blocks_for{'build-android.yml'} ) {
     my $android = $blocks_for{'build-android.yml'};
-    my $ui = $android->{'android-ui'} // '';
+    my $ui      = $android->{'android-ui'} // '';
     my ($acceleration) =
-      $ui =~ /^      - name: Verify KVM access for the Android UI runner\n(.*?)(?=^      - |\z)/ms;
-    push @errors, 'build-android.yml: Android UI must verify runner-only KVM access before building'
+      $ui =~
+/^      - name: Verify KVM access for the Android UI runner\n(.*?)(?=^      - |\z)/ms;
+    push @errors,
+'build-android.yml: Android UI must verify runner-only KVM access before building'
       if !defined($acceleration)
-      || index( $ui, 'Verify KVM access' ) > index( $ui, 'Build Android x86_64' )
+      || index( $ui, 'Verify KVM access' ) >
+      index( $ui, 'Build Android x86_64' )
       || index( $acceleration, q{sudo chown -- "$UID" /dev/kvm} ) < 0
       || index( $acceleration, q{sudo chmod u+rw /dev/kvm} ) < 0
-      || index( $acceleration, q{timeout --kill-after=5s 15s "$ANDROID_HOME/emulator/emulator" -accel-check} ) < 0
-      || index( $acceleration, q{grep -Fxq '0' "$RUNNER_TEMP/emulator-acceleration.txt"} ) < 0;
+      || index(
+        $acceleration,
+q{timeout --kill-after=5s 15s "$ANDROID_HOME/emulator/emulator" -accel-check}
+      ) < 0
+      || index( $acceleration,
+        q{grep -Fxq '0' "$RUNNER_TEMP/emulator-acceleration.txt"} ) < 0;
     my ($boot) =
       $ui =~ /^      - name: Boot API 29 emulator\n(.*?)(?=^      - |\z)/ms;
-    push @errors, 'build-android.yml: Android emulator startup must check process liveness'
+    push @errors,
+      'build-android.yml: Android emulator startup must check process liveness'
       if !defined($boot)
       || index( $boot, q{emulator_pid=$!} ) < 0
       || index( $boot, q{kill -0 "$emulator_pid"} ) < 0
       || index( $boot, q{-s emulator-5554 get-state} ) < 0
-      || index( $boot, q{-s emulator-5554 shell getprop sys.boot_completed} ) < 0;
-    push @errors, 'build-android.yml: Android AVD producer and emulator must share a verified lookup directory'
+      || index( $boot, q{-s emulator-5554 shell getprop sys.boot_completed} ) <
+      0;
+    push @errors,
+'build-android.yml: Android AVD producer and emulator must share a verified lookup directory'
       if !defined($boot)
-      || index( $boot, q{export ANDROID_AVD_HOME="$RUNNER_TEMP/openi2pd-avd"} ) < 0
+      || index( $boot, q{export ANDROID_AVD_HOME="$RUNNER_TEMP/openi2pd-avd"} )
+      < 0
       || index( $boot, q{--path "$ANDROID_AVD_HOME/openi2pd-api29.avd"} ) < 0
       || index( $boot, q{"$emulator" -list-avds} ) < 0
       || index( $boot, q{grep -Fxq 'openi2pd-api29'} ) < 0;
     my ($diagnostics) =
-      $ui =~ /^      - name: Collect emulator diagnostics on failure\n(.*?)(?=^      - |\z)/ms;
-    push @errors, 'build-android.yml: Android emulator diagnostics must be bounded'
+      $ui =~
+/^      - name: Collect emulator diagnostics on failure\n(.*?)(?=^      - |\z)/ms;
+    push @errors,
+      'build-android.yml: Android emulator diagnostics must be bounded'
       if !defined($diagnostics)
       || $diagnostics !~ /^        timeout-minutes: 1$/m
-      || index( $diagnostics, q{timeout --kill-after=5s 15s "$ADB" -s emulator-5554 logcat} ) < 0;
+      || index( $diagnostics,
+        q{timeout --kill-after=5s 15s "$ADB" -s emulator-5554 logcat} ) < 0;
     my ($instrumentation) =
-      $ui =~ /^      - name: Run UI and accessibility instrumentation tests\n(.*?)(?=^      - |\z)/ms;
-    push @errors, 'build-android.yml: Android instrumentation needs a deadline before diagnostics'
+      $ui =~
+/^      - name: Run UI and accessibility instrumentation tests\n(.*?)(?=^      - |\z)/ms;
+    push @errors,
+'build-android.yml: Android instrumentation needs a deadline before diagnostics'
       if !defined($instrumentation)
       || $instrumentation !~ /^        timeout-minutes: 32$/m
-      || index( $instrumentation, q{timeout --kill-after=15s 30m ./gradlew :i2pd:connectedDebugAndroidTest} ) < 0;
-    for my $report ( 'emulator.log', 'logcat.txt', 'emulator-acceleration.txt', 'instrumentation-state.txt' ) {
-        push @errors, "build-android.yml: missing Android emulator diagnostic artifact $report"
+      || index(
+        $instrumentation,
+q{timeout --kill-after=15s 30m ./gradlew :i2pd:connectedDebugAndroidTest}
+      ) < 0;
+
+    for my $report (
+        'emulator.log',              'logcat.txt',
+        'emulator-acceleration.txt', 'instrumentation-state.txt'
+      )
+    {
+        push @errors,
+"build-android.yml: missing Android emulator diagnostic artifact $report"
           if index( $ui, q{${{ runner.temp }}/} . $report ) < 0;
     }
     my $sign = $android->{'android-sign'} // '';
@@ -666,20 +694,21 @@ if ( exists $blocks_for{'build-android.yml'} ) {
     push @errors, 'build-android.yml: signer must not run repository code'
       if $sign =~ /actions\/checkout|gradlew|uses:\s*\.\//;
     my $package_check =
-      q{grep -Eq "^package: name='dev[.]uhden[.]i2pd' versionCode='[0-9]+'" <<<"$badging"};
-    for my $step (
-        'Inspect and align production APK',
-        'Verify production certificate and APK integrity'
-      )
+q{grep -Eq "^package: name='dev[.]uhden[.]i2pd' versionCode='[0-9]+'" <<<"$badging"};
+    for my $step ( 'Inspect and align production APK',
+        'Verify production certificate and APK integrity' )
     {
-        my ($body) = $sign =~ /^      - name: \Q$step\E\n(.*?)(?=^      - |\z)/ms;
-        push @errors, "build-android.yml: exact APK package check missing in $step"
+        my ($body) =
+          $sign =~ /^      - name: \Q$step\E\n(.*?)(?=^      - |\z)/ms;
+        push @errors,
+          "build-android.yml: exact APK package check missing in $step"
           if !defined($body) || index( $body, $package_check ) < 0;
     }
     for my $job ( keys %{$android} ) {
         next if $job eq 'android-sign';
         push @errors, "build-android.yml: signing credentials in $job"
-          if $android->{$job} =~ /android-openi2pd-release|secrets\.OPENI2PD_(?:KEYSTORE_|KEY_PASSWORD)/;
+          if $android->{$job} =~
+/android-openi2pd-release|secrets\.OPENI2PD_(?:KEYSTORE_|KEY_PASSWORD)/;
     }
 }
 
@@ -754,7 +783,7 @@ if ( exists $texts{'build-android.yml'} ) {
     my ($probe) = $texts{'build-android.yml'} =~
       /      - name: Probe Java 25 D8\/R8 dexing\n(.*?)(?=      - name:|\z)/s;
     for my $required (
-        '(cd android && ./gradlew --no-daemon --warning-mode all writeJava25R8Classpath)',
+'(cd android && ./gradlew --no-daemon --warning-mode all writeJava25R8Classpath)',
         'R8_JAR=$(cat android/build/reports/java25/r8-classpath.txt)',
         'test -f "$R8_JAR"'
       )
@@ -999,9 +1028,11 @@ q{Select-String -Path @($log, $consoleLog, $consoleError) -Pattern '^startup pro
           'build-windows.yml: startup probe evidence boundary missing'
           if index( $probe, $required ) < 0;
     }
-    my $child_result = index( $probe, q{throw ('contained startup probe child exited '} );
+    my $child_result =
+      index( $probe, q{throw ('contained startup probe child exited '} );
     my $debugger_failure = index( $probe, q{if ($debugger.ExitCode -ne 0)} );
-    push @violations, 'build-windows.yml: startup probe must classify a child result before the debugger exit'
+    push @violations,
+'build-windows.yml: startup probe must classify a child result before the debugger exit'
       if $child_result < 0 || $debugger_failure < $child_result;
     push @violations, 'build-windows.yml: startup probe lacks retained artifact'
       unless $windows =~ /^\s*build-msvc\/startup-probe\s*$/m;

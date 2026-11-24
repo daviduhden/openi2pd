@@ -159,7 +159,7 @@ sub split_params {
 sub param_name {
     my ($param) = @_;
     $param =~ s/^\s+|\s+$//g;
-    return undef if $param eq '' || $param eq 'void' || $param eq '...';
+    return if $param eq '' || $param eq 'void' || $param eq '...';
 
     my $depth = 0;
     my $cut   = -1;
@@ -186,14 +186,14 @@ sub param_name {
     $type_only =~ s/\b(?:const|volatile|typename)\b/ /g;
     $type_only =~ s/^\s*(?:struct|class|union|enum(?:\s+class)?)\s+//;
     $type_only =~ s/^\s+|\s+$//g;
-    return undef
+    return
       if $type_only =~ /\A(?:::)?[A-Za-z_]\w*(?:\s*::\s*[A-Za-z_]\w*)*\z/;
-    return undef
+    return
       if $type_only =~
 /\A(?:signed|unsigned|short|long|int|char|double|float|bool|wchar_t|char8_t|char16_t|char32_t|void)(?:\s+(?:signed|unsigned|short|long|int|char|double|float|bool|wchar_t|char8_t|char16_t|char32_t|void))*\z/;
-    return undef unless $param =~ /([A-Za-z_]\w*)\s*$/;
+    return unless $param =~ /([A-Za-z_]\w*)\s*$/;
     my $name = $1;
-    return undef
+    return
       if $name =~
       /^(?:const|volatile|unsigned|signed|struct|class|enum|typename)$/;
     return $name;
@@ -208,10 +208,10 @@ sub declaration_info {
     my $tail = substr( $masked, $position, 800 );
     $tail =~ s/^\s+//;
     my $open = index( $tail, '(' );
-    return undef if $open < 0;
+    return if $open < 0;
     my $prefix = substr( $tail, 0, $open );
-    return undef if $prefix =~ /[#;\{\}]/;
-    return undef if ( $prefix =~ tr/\n// ) > 8;
+    return if $prefix =~ /[#;\{\}]/;
+    return if ( $prefix =~ tr/\n// ) > 8;
 
     my $depth = 0;
     my $close = -1;
@@ -223,20 +223,20 @@ sub declaration_info {
             if ( $depth == 0 ) { $close = $i; last; }
         }
     }
-    return undef if $close < 0;
+    return if $close < 0;
 
     my $name_part = $prefix;
     $name_part =~
 s/\b(?:template\s*<[^;{}]*?>|inline|static|constexpr|consteval|virtual|explicit|friend|extern|JNIEXPORT|JNICALL|__cdecl|CALLBACK|noexcept|const|override|final)\b/ /g;
     $name_part =~ s/^\s+|\s+$//g;
-    return undef if $name_part eq '';
-    return undef
+    return if $name_part eq '';
+    return
       unless $name_part =~
 /((?:[A-Za-z_]\w*(?:::[A-Za-z_]\w*)*)|operator\s*[^\s(]+|~[A-Za-z_]\w*)\s*$/;
     my $full  = $1;
     my @words = split /\s+/, $name_part;
     my $last  = $words[-1] // '';
-    return undef
+    return
       if $last =~
 /^(?:if|for|while|switch|catch|return|sizeof|decltype|static_assert|alignof)$/;
 
