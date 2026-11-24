@@ -68,7 +68,7 @@ install)
 	;;
 clean)
 	case "$build_directory" in
-	'' | . | .. | /)
+	'' | '.' | '..' | '/')
 		printf '%s\n' 'refusing to remove unsafe BUILD_DIR' >&2
 		exit 1
 		;;

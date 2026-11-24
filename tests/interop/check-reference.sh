@@ -30,8 +30,7 @@ if [ ! -d "$ref/.git" ]; then
 	exit 1
 fi
 
-read_git()
-{
+read_git() {
 	git --no-replace-objects --no-optional-locks -C "$ref" "$@"
 }
 
