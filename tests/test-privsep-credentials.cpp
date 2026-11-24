@@ -9,9 +9,9 @@
  * refusal of a group without a user, bounded rejection of malformed
  * names, the fixed non-secret diagnostic, and the forked credential
  * drop (empty supplementary groups, real/effective ids equal to the
- * requested pair). The test never depends on a second system account:
- * every case uses the current non-root identity or a name that cannot
- * exist. It skips with 77 on another platform or when running as root.
+ * requested pair). The default cases use the current non-root identity
+ * or a nonexistent name. The OpenBSD VM additionally selects the
+ * privileged drop mode with an explicitly provisioned non-root account.
  * Prepared for manual CI only; this file must not be executed locally.
  */
 
@@ -35,6 +35,7 @@ int main ()
 #include <grp.h>
 #include <pwd.h>
 #include <string>
+#include <string_view>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -50,10 +51,45 @@ std::string NonexistentName (const char * prefix)
 {
 	return std::string (prefix) + "-openi2pd-" + std::to_string (::getpid ()) + "-" + std::to_string (::geteuid ());
 }
+
+void CheckCredentialDrop (const WorkerCredentials & credentials, bool shouldDrop, bool seedRootGroup = false)
+{
+	const pid_t pid = ::fork ();
+	assert (pid >= 0);
+	if (pid == 0)
+	{
+		if (seedRootGroup)
+		{
+			const gid_t rootGroup = 0;
+			if (::setgroups (1, &rootGroup) != 0 || ::getgroups (0, nullptr) <= 0) _exit (3);
+		}
+		const bool dropped = DropWorkerCredentialsInChild (credentials);
+		if (dropped != shouldDrop) _exit (1);
+		if (dropped
+			&& (static_cast<uint32_t> (::getuid ()) != credentials.uid
+				|| static_cast<uint32_t> (::geteuid ()) != credentials.uid
+				|| static_cast<uint32_t> (::getgid ()) != credentials.gid
+				|| static_cast<uint32_t> (::getegid ()) != credentials.gid || ::getgroups (0, nullptr) != 0))
+			_exit (2);
+		_exit (0);
+	}
+	int status = 0;
+	assert (::waitpid (pid, &status, 0) == pid);
+	assert (WIFEXITED (status) && WEXITSTATUS (status) == 0);
+}
 }
 
-int main ()
+int main (int argc, char ** argv)
 {
+	if (argc == 3 && std::string_view (argv[1]) == "--verify-privileged-drop")
+	{
+		assert (::getuid () == 0 && ::geteuid () == 0);
+		const auto target = ResolveWorkerCredentials (argv[2], "");
+		assert (target && target->configured && target->uid != 0 && target->gid != 0);
+		CheckCredentialDrop (*target, true, true);
+		return 0;
+	}
+	assert (argc == 1);
 	// A root test runner would exercise the privilege-raising path and can
 	// never reach the unprivileged expectations below.
 	if (::geteuid () == 0) return i2p::test::SkipCapability ("worker credentials require a non-root runner");
@@ -142,38 +178,18 @@ int main ()
 		if (foreignUid != 0)
 		{
 			const WorkerCredentials foreign { true, foreignUid, static_cast<uint32_t> (::getegid ()) };
-			const pid_t pid = ::fork ();
-			assert (pid >= 0);
-			if (pid == 0) _exit (DropWorkerCredentialsInChild (foreign) ? 1 : 0);
-			int status = 0;
-			assert (::waitpid (pid, &status, 0) == pid);
-			assert (WIFEXITED (status) && WEXITSTATUS (status) == 0);
+			CheckCredentialDrop (foreign, false);
 		}
 	}
 
 	// The drop verifies the real/effective ids and an empty supplementary
-	// set. An unprivileged process cannot clear supplementary groups, so
-	// the check only runs when the set is already empty.
-	if (::getgroups (0, nullptr) != 0)
-	{
-		std::fprintf (
-			stderr, "test-privsep-openbsd-credentials: supplementary groups present, skipping the drop check\n");
-		return 0;
-	}
-	{
-		const WorkerCredentials credentials { true, static_cast<uint32_t> (::geteuid ()),
-			static_cast<uint32_t> (::getegid ()) };
-		const pid_t pid = ::fork ();
-		assert (pid >= 0);
-		if (pid == 0)
-		{
-			if (!DropWorkerCredentialsInChild (credentials)) _exit (1);
-			_exit (::getgroups (0, nullptr) == 0 ? 0 : 2);
-		}
-		int status = 0;
-		assert (::waitpid (pid, &status, 0) == pid);
-		assert (WIFEXITED (status) && WEXITSTATUS (status) == 0);
-	}
+	// set. A non-root caller with supplementary groups cannot clear them,
+	// and must therefore see a failure even for its own identity.
+	const int supplementaryGroups = ::getgroups (0, nullptr);
+	assert (supplementaryGroups >= 0);
+	const WorkerCredentials credentials { true, static_cast<uint32_t> (::geteuid ()),
+		static_cast<uint32_t> (::getegid ()) };
+	CheckCredentialDrop (credentials, supplementaryGroups == 0);
 	return 0;
 }
 

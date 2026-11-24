@@ -97,6 +97,15 @@ limitation; do not substitute local execution. Ask for:
 
 ## Known issues and decisions
 
+- The VM's credential tests use a dedicated non-root account with
+  the base system's `/var/empty` as its configured home. Assert
+  directory existence and lack of write access as that account.
+  Tests and JUnit output live in a separate private staging directory.
+  The non-root path asserts refusal when supplementary groups remain.
+  A root-started fixture in a root-owned stage explicitly seeds a group
+  in its child before exercising the production drop. Inspect both
+  JUnit files because a passing account-resolution suite alone cannot
+  establish a successful transition from root.
 - UDPTunnel's shared socket-buffer request is 2 MiB on OpenBSD, matching
   default SB_MAX, and 4 MiB elsewhere. Client startup and UDPSession both
   use it; retain configuration errors if a custom kernel limit still fails.

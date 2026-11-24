@@ -73,7 +73,8 @@ jobs:
           ctest --test-dir build-output -N -L platform --no-tests=error
           # The VM shell is root. Stage only these two executables in a
           # private directory for the unprivileged credential cases.
-          useradd -g =uid -s /bin/sh openi2pd-ci
+          # The account uses the base system's non-writable empty home.
+          useradd -d /var/empty -g =uid -s /bin/sh openi2pd-ci
           credential_dir=$(mktemp -d /tmp/openi2pd-credentials.XXXXXXXX)
           chown openi2pd-ci "$credential_dir"
           for name in test-privsep-worker-identity test-privsep-credentials; do
@@ -85,6 +86,8 @@ jobs:
           su -s /bin/sh openi2pd-ci -c '
             set -eu
             test "$(id -u)" -ne 0
+            test -d /var/empty
+            test ! -w /var/empty
             cd "$1"
             exec /usr/local/bin/ctest --test-dir . -j 1 --output-on-failure \
               --no-tests=error --output-junit credentials.xml
@@ -103,6 +106,16 @@ jobs:
             echo 'OpenBSD non-root credential coverage was skipped' >&2
             exit 1
           fi
+          # Keep the root-started probe outside the private stage owned
+          # by the unprivileged account. Only its child drops credentials.
+          drop_dir=$(mktemp -d /tmp/openi2pd-credential-drop.XXXXXXXX)
+          install -m 0555 build-output/tests/test-privsep-credentials "$drop_dir/"
+          cat > "$drop_dir/CTestTestfile.cmake" <<'EOF'
+          add_test(test-privsep-credential-drop "./test-privsep-credentials" "--verify-privileged-drop" "openi2pd-ci")
+          set_tests_properties(test-privsep-credential-drop PROPERTIES TIMEOUT 120)
+          EOF
+          ctest --test-dir "$drop_dir" -j 1 --output-on-failure \
+            --no-tests=error --output-junit "$PWD/ctest-openbsd-credential-drop.xml"
           make BUILD_DIR=build-make \
             CMAKE_FLAGS="-DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DI2PD_OPENSSL_EXPECT=LibreSSL" \
             router
@@ -118,5 +131,6 @@ jobs:
             build.log
             ctest-openbsd.xml
             ctest-openbsd-credentials.xml
+            ctest-openbsd-credential-drop.xml
           if-no-files-found: warn
           retention-days: 7
