@@ -97,6 +97,7 @@ public final class LocaleResourceTest {
             }
             assertTrue("locale " + tag + " did not select a translated catalog", translated);
         }
+        assertEquals("启动", localized(base, "zh-CN").getString(R.string.action_start));
 
         // Traditional Chinese is deliberately not shipped: a zh-TW or
         // zh-Hant device must fall back to English rather than show

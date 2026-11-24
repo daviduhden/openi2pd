@@ -101,7 +101,7 @@ assert_present("${tui_text}" "i2p::i18n::tr" "TUI translation boundary")
 # std::string first.
 assert_absent("${tui_text}" "+ i2p::i18n::tr (" "TUI translation concatenation must materialise std::string")
 assert_present("${tui_client_text}" "--lang" "TUI language option")
-assert_present("${gradle_text}" "localeFilters += [\"en\", \"es\", \"ru\", \"zh\"]"
+assert_present("${gradle_text}" "localeFilters += [\"en\", \"es\", \"ru\", \"zh-rCN\"]"
   "Android locale filters")
 assert_present("${locales_text}" "zh-CN" "Android Simplified Chinese locale")
 assert_present("${guard_text}" "placeholder" "Android placeholder parity guard")

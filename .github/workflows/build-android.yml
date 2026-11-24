@@ -238,11 +238,21 @@ jobs:
           rm -f "$native"
           grep -q 'Java_org_openi2pd_router_I2PD' <<<"$symbols" \
             || { echo "packaged libi2pd.so exports no JNI entry points" >&2; exit 1; }
-          if ! find_application_apk release >/dev/null; then
+          if ! release_apk=$(find_application_apk release); then
             echo "release app APK with arm64 JNI library not found; APK outputs present:" >&2
             find "$GITHUB_WORKSPACE" -type f -name '*.apk' -print >&2
             exit 1
           fi
+          aapt2="$ANDROID_HOME/build-tools/36.0.0/aapt2"
+          for candidate in "$apk" "$release_apk"; do
+            configurations=$("$aapt2" dump configurations "$candidate")
+            for locale in es ru zh-rCN; do
+              grep -Fxq "$locale" <<<"$configurations" || {
+                echo "APK lacks the $locale resource configuration: $candidate" >&2
+                exit 1
+              }
+            done
+          done
       - name: Probe Java 25 D8/R8 dexing
         run: |
           # Use AGP's resolved dependency, never an unrelated cached R8.

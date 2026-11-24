@@ -231,7 +231,7 @@ RouterService (started + bound, non-exported, same process)
   `zh-Hant` translations and must not reuse Simplified text.
 - `res/xml/locales_config.xml` declares `en, es, ru, zh-CN`;
   `AndroidManifest.xml` references it, and
-  `androidResources { localeFilters += ["en", "es", "ru", "zh"] }` keeps the
+  `androidResources { localeFilters += ["en", "es", "ru", "zh-rCN"] }` keeps the
   resource split aligned. `values-zh` is intentionally not used because it
   would also match Traditional Chinese.
 - Settings uses `AppCompatDelegate.setApplicationLocales` for per-app language;

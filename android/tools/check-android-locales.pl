@@ -236,8 +236,8 @@ if ( $gradle =~ /androidResources\s*\{(.*?)\}/s ) {
     my @filters = ( $block =~ /localeFilters\s*\+=\s*\[([^\]]*)\]/s );
     my $joined  = join( '', @filters );
     my @tags    = ( $joined =~ /["']([^"']+)["']/g );
-    fail("Gradle localeFilters must be en, es, ru, zh")
-      unless join( ',', @tags ) eq 'en,es,ru,zh';
+    fail("Gradle localeFilters must be en, es, ru, zh-rCN")
+      unless join( ',', @tags ) eq 'en,es,ru,zh-rCN';
 }
 else {
     fail("Gradle androidResources block missing");
@@ -400,7 +400,7 @@ language needs (C<one>/C<other>, plus C<few>/C<many> for Russian);
 
 C<res/xml/locales_config.xml> declaring exactly C<en, es, ru, zh-CN>, the
 manifest C<localeConfig> reference and the AppCompat auto-store service, and
-the Gradle C<localeFilters> list C<en, es, ru, zh>;
+the Gradle C<localeFilters> list C<en, es, ru, zh-rCN>;
 
 =item *
 

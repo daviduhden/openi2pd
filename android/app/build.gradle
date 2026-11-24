@@ -63,13 +63,12 @@ android {
     // rather than relying on an SDK-manager side effect.
     buildToolsVersion = '36.0.0'
 
-    // Official UI locales. Keep per-app locale metadata and resource
-    // splits aligned with values/, values-es/, values-ru/ and
-    // values-zh-rCN/. The language-level "zh" filter leaves Traditional
-    // Chinese to fall back to English until a verified values-zh-rTW
-    // catalog exists.
+    // Keep resource packaging aligned with per-app locale metadata and
+    // values/, values-es/, values-ru/ and
+    // values-zh-rCN/. Bare "zh" drops the region-qualified catalog.
+    // Use the exact qualifier without adding a generic Chinese catalog.
     androidResources {
-        localeFilters += ["en", "es", "ru", "zh"]
+        localeFilters += ["en", "es", "ru", "zh-rCN"]
     }
 
     defaultConfig {

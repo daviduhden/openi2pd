@@ -87,7 +87,7 @@ the text crosses a protocol/IPC boundary.
 - UTF-8 without BOM, LF endings and natural target-language terminology.
   Product/protocol identifiers and file names stay verbatim.
 - Android uses `values/` (English source), `values-es`, `values-ru`,
-  `values-zh-rCN`; `locales_config` and `localeFilters` use `en, es, ru, zh`
+  `values-zh-rCN`; `locales_config` uses `zh-CN` and `localeFilters` uses `zh-rCN`
   with `zh-CN` as the per-app tag. `values-zh` alone is forbidden because it
   would also match Traditional Chinese.
 - TUI `Put` takes terminal columns, not bytes; use `DisplayWidth`/`FitUtf8`
