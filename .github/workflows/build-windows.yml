@@ -32,6 +32,149 @@ jobs:
   # backend with the same toolchain used for the distribution helper.
   build:
     name: Windows MSYS2 Clang64 build and tests
+  windows-manual:
+    name: Windows compiled manual
+    runs-on: windows-2022
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check the manual source inventory
+        run: |
+          $files = git -c core.quotePath=false ls-files
+          if ($LASTEXITCODE -ne 0) { throw 'git ls-files failed' }
+          $manuals = @($files | Where-Object { $_ -cmatch '\.(?:[1-9][0-9]*[a-zA-Z]*|[nl])$' })
+          if ($manuals.Count -eq 0) { throw 'No tracked manual pages found' }
+          foreach ($manual in $manuals) {
+            if ($manual -cnotmatch '^man/') { throw "Manual outside man/: $manual" }
+            Write-Output $manual
+          }
+          New-Item -ItemType Directory -Path manual-evidence -Force | Out-Null
+          $manuals | Out-File manual-evidence/source-inventory.txt
+      - name: Install mandoc from Cygwin
+        id: cygwin
+        uses: cygwin/cygwin-install-action@3f0a3f9f988f7e96b8c18098ae05eaec175f5b52  # v6.1
+        with:
+          packages: mandoc
+          add-to-path: 'false'
+          site: https://mirrors.kernel.org/sourceware/cygwin/
+      - name: Provision Microsoft HTML Help compiler
+        run: |
+          $sevenZip = Join-Path $env:ProgramFiles '7-Zip\7z.exe'
+          if (-not (Test-Path -LiteralPath $sevenZip -PathType Leaf)) {
+            throw "7-Zip missing from runner image: $sevenZip"
+          }
+          # Microsoft's original download is unavailable. Verify the pinned
+          # Workshop archive before extracting only the two compiler files.
+          $workshop = Join-Path $env:RUNNER_TEMP 'htmlhelp.exe'
+          $compilerDir = Join-Path $env:RUNNER_TEMP 'htmlhelp-compiler'
+          $archive = 'https://raw.githubusercontent.com/EWSoftware/SHFB/64ecc94ebfad1b28fa82dee9f0c9c418efb8d0fa/ThirdPartyTools/htmlhelp.exe'
+          Invoke-WebRequest -Uri $archive -OutFile $workshop
+          $expected = 'cf8fe5a02d3c2bf0c8728dd399dc3b2587c4139ffb23ef4268f34535a6157b87'
+          $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $workshop).Hash
+          if ($actual -ine $expected) { throw "Unexpected Workshop SHA-256: $actual" }
+          "Workshop source: $archive", "Workshop SHA-256: $actual" |
+            Out-File manual-evidence/workshop.txt
+          & $sevenZip e -y "-o$compilerDir" -- $workshop hhc.exe hha.dll
+          if ($LASTEXITCODE -ne 0) { throw 'Workshop compiler extraction failed' }
+          $compiler = Join-Path $compilerDir 'hhc.exe'
+          foreach ($file in @($compiler, (Join-Path $compilerDir 'hha.dll'))) {
+            if (-not (Test-Path -LiteralPath $file -PathType Leaf)) {
+              throw "Workshop compiler file missing: $file"
+            }
+            Get-FileHash -Algorithm SHA256 -LiteralPath $file | Format-List |
+              Out-File manual-evidence/workshop.txt -Append
+          }
+          "OPENI2PD_HHC=$compiler" >> $env:GITHUB_ENV
+          "OPENI2PD_7ZIP=$sevenZip" >> $env:GITHUB_ENV
+      - name: Build and verify the compiled manual
+        env:
+          CYGWIN_ROOT: ${{ steps.cygwin.outputs.root }}
+        run: |
+          $mandoc = Join-Path $env:CYGWIN_ROOT 'bin\mandoc.exe'
+          $cygcheck = Join-Path $env:CYGWIN_ROOT 'bin\cygcheck.exe'
+          & $cygcheck -c mandoc 2>&1 | Tee-Object manual-evidence/mandoc.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Cygwin mandoc package check failed' }
+          cmake -S build/windows-manual -B build-windows-manual -G Ninja `
+            "-DI2PD_MANDOC=$mandoc" "-DI2PD_HHC=$env:OPENI2PD_HHC" `
+            "-DI2PD_7ZIP=$env:OPENI2PD_7ZIP" 2>&1 | Tee-Object manual-evidence/configure.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Manual project configuration failed' }
+          cmake --build build-windows-manual --target windows-manual 2>&1 |
+            Tee-Object manual-evidence/build.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Manual generation or archive verification failed' }
+          $count = @(Get-Content -LiteralPath manual-evidence/source-inventory.txt).Count
+          if (-not (Select-String -LiteralPath manual-evidence/build.txt -SimpleMatch "Verified $count manual entries in openi2pd.chm")) {
+            throw 'Compiled manual coverage differs from the tracked source inventory'
+          }
+          $chm = 'build-windows-manual/windows-manual/openi2pd.chm'
+          if (-not (Test-Path -LiteralPath $chm -PathType Leaf)) { throw 'Missing compiled manual' }
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $chm).Hash
+          "$($hash.ToLowerInvariant())  openi2pd.chm" | Out-File manual-evidence/SHA256SUMS
+      - name: Reject an unresolved manual cross-reference
+        env:
+          CYGWIN_ROOT: ${{ steps.cygwin.outputs.root }}
+        run: |
+          $mandoc = Join-Path $env:CYGWIN_ROOT 'bin\mandoc.exe'
+          $fixture = Join-Path $env:RUNNER_TEMP 'manual-missing-reference'
+          $source = Join-Path $fixture 'man'
+          $output = Join-Path $fixture 'output'
+          New-Item -ItemType Directory -Path $source -Force | Out-Null
+          @(
+            '.Dd January 1, 2026'
+            '.Dt CHM-FIXTURE 1'
+            '.Os'
+            '.Sh NAME'
+            '.Nm chm-fixture'
+            '.Nd check missing compiled manual reference'
+            '.Sh SEE ALSO'
+            '.Xr openi2pd-missing-fixture 1'
+          ) | Set-Content -Encoding ascii (Join-Path $source 'chm-fixture.1')
+          # A missing compiler makes a late, unrelated refusal observable.
+          $unavailableCompiler = Join-Path $fixture 'must-not-run.exe'
+          $messages = & perl build/windows-manual.pl $source '1.0.0' $output `
+            $mandoc $unavailableCompiler $env:OPENI2PD_7ZIP 2>&1
+          $status = $LASTEXITCODE
+          $messages | Tee-Object manual-evidence/missing-reference.txt
+          $LASTEXITCODE = 0
+          if ($status -eq 0 -or "$messages" -cnotmatch 'Missing cross-reference openi2pd-missing-fixture\.1') {
+            throw 'The negative fixture did not reach the missing-reference check'
+          }
+          if (Test-Path -LiteralPath (Join-Path $output 'openi2pd.chm')) {
+            throw 'The negative fixture published a compiled manual'
+          }
+      - name: Verify the Windows documentation install
+        run: |
+          $prefix = Join-Path $env:GITHUB_WORKSPACE 'windows-manual-install'
+          cmake --install build-windows-manual --prefix $prefix --component Documentation 2>&1 |
+            Tee-Object manual-evidence/install.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Manual install failed' }
+          $installed = Join-Path $prefix 'share\doc\i2pd\openi2pd.chm'
+          $compiled = 'build-windows-manual/windows-manual/openi2pd.chm'
+          $expected = (Get-FileHash -Algorithm SHA256 -LiteralPath $compiled).Hash
+          $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $installed).Hash
+          if ($actual -ne $expected) { throw 'Installed manual differs from compiled manual' }
+          Copy-Item -LiteralPath 'manual-evidence/SHA256SUMS' -Destination (Split-Path $installed)
+      - name: Upload Windows compiled manual
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: windows-manual
+          path: windows-manual-install/share/doc/i2pd/
+          if-no-files-found: error
+      - name: Upload compiled manual diagnostics
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: windows-manual-evidence
+          path: |
+            manual-evidence
+            build-windows-manual/windows-manual/manual.log
+          if-no-files-found: warn
+          retention-days: 7
+
     runs-on: windows-2022
     timeout-minutes: 45
     env:

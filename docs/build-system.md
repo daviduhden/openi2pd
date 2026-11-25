@@ -77,7 +77,8 @@ Options:
 | `I2PD_TUI_REQUIRED` | ON | Fail configuration if ncursesw is missing on Unix; set OFF for an explicitly degraded build without the TUI |
 | `I2PD_BUILD_TOOLS` | ON | Build and install the auxiliary tools |
 | `I2PD_BUILD_JNI` | OFF | Android-only JNI shared library; rejected on other platforms |
-| `I2PD_INSTALL_DOCS` | ON | Install documentation, branding assets and manual pages |
+| `I2PD_BUILD_WINDOWS_MANUAL` | OFF | Generate Windows HTML Help and include it in the `Documentation` install component |
+| `I2PD_INSTALL_DOCS` | ON | Install the documentation tree and branding assets |
 | `I2PD_INSTALL_CONFIG` | ON | Install the sample `i2pd.conf`, `subscriptions.txt` and `tunnels.conf`; set OFF when the packager ships its own examples |
 | `I2PD_PERL_CRITIC` | OFF | Require `perlcritic` and register the `perl-critic` CTest target; configuration fails when it is unavailable |
 | `I2PD_REQUIRE_PERL` | OFF | Fail configuration instead of silently omitting the Perl-based static checks |
@@ -212,11 +213,73 @@ Staging can select one CMake install component at a time:
 
 Man pages are tied to the binary component rather than to
 `I2PD_INSTALL_DOCS`, so a static or OpenBSD package that disables the optional
-documentation tree still installs `i2pd.1`/`i2pd-tui.1`/`i2pdctl.1`. The tools
+documentation tree still installs `i2pd.1`/`i2pd-tui.1`/`i2pdctl.1` on Unix.
+Windows packages ship the compiled manual described below. The tools
 licence is installed as `LICENSE.i2pd-tools` by both the `Tools` and
 `Documentation` components so a component-selective install keeps the
 attribution. Project documentation uses BSD-3-Clause, including files with a
 file-specific SPDX declaration; no standalone CC notice file is installed.
+
+### Windows HTML Help
+
+The documentation-only build uses CMake, Perl, mandoc, Microsoft HTML
+Help Workshop (`hhc.exe`) and 7-Zip. It obtains the version from
+`libi2pd/version.h` and takes its topics from the canonical `man/` tree.
+Install the tools on the build host and let CMake discover them. Use
+`I2PD_MANDOC`, `I2PD_HHC` and `I2PD_7ZIP` CMake cache paths to
+select explicit executables when there is more than one installation.
+The manual Windows workflow provisions mandoc from Cygwin's signed
+package repository and checks the SHA-256 of the Workshop archive
+before extracting the compiler. The CMake target uses local tools.
+
+```powershell
+cmake -S build/windows-manual -B build-output/manual-build -G Ninja
+cmake --build build-output/manual-build --target windows-manual
+```
+
+The target writes `windows-manual/openi2pd.chm` under its binary directory.
+The Windows application build can generate the same file with
+`-DI2PD_BUILD_WINDOWS_MANUAL=ON`. Build `windows-manual` before staging the
+`Documentation` install component, which places the generated CHM in
+`CMAKE_INSTALL_DOCDIR`. The option is independent of
+`I2PD_INSTALL_DOCS`.
+
+Add and edit pages under `man/` using the existing mdoc or man conventions.
+Use the appropriate section in the file name and in cross-references.
+The generator follows manual aliases such as `.so man1/openi2pd-tools.1`
+and creates the contents, index and internal links from the same inventory.
+The index includes command names, headings and option anchors. References
+to unbundled system manuals remain readable as text.
+Review the manual CI logs for source diagnostics, link validation and
+compiled archive verification. Generated topics and their ordering are
+deterministic. HTML Help Workshop can add compiler metadata to the CHM,
+so identical topics alone do not establish identical CHM bytes.
+
+The [MinGW release helper](../build/build_mingw.cmd) generates the manual
+once and supplies it to the 32-bit ZIP, 64-bit ZIP and Inno Setup installer.
+Put command-line tools in `PATH` before invoking the helper if CMake
+cannot discover their installation directories. If invoking `ISCC.exe`
+directly, pass the verified CHM's absolute path as `/dI2Pd_Manual` along
+with the existing version definitions. Inno Setup installs and tracks the
+file under the application directory, and removes it and the Start menu
+shortcut during uninstall.
+
+Open **openi2pd Manual** from the Start menu or open
+`openi2pd.chm` from an extracted ZIP on a local drive. Windows HTML Help
+supplies the viewer, contents, index and search. Windows security policies
+for downloaded files and remote locations still apply.
+[Microsoft HTML Help viewer](https://learn.microsoft.com/en-us/previous-versions/windows/desktop/htmlhelp/about-the-html-help-executable-program)
+
+For release acceptance, use a Windows 10 and a Windows 11 desktop. Open the
+installed Start menu shortcut and the CHM from an extracted ZIP. Check that
+the home page reports the expected version, Contents groups topics by
+section, the Index resolves `i2pdctl`, and Search finds a known term such
+as `proxy`. Follow a cross-reference from `i2pd(1)` to
+`i2pd-tui(1)`, check that a list and a fixed-width command example display
+correctly, and verify that uninstall removes the installed manual and
+shortcut. The Windows CI job checks CHM members and the staged
+`Documentation` install. The desktop walkthrough also covers the
+installer and the viewer.
 
 The exported package uses `configure_package_config_file`, `@PACKAGE_INIT@`
 and an exact version match,

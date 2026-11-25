@@ -135,6 +135,11 @@ Ask for exact paths and package names. Do not let them run `dpkg-buildpackage`,
   explicit install commands and file lists when the tool manual set changes.
   The canonical installed upstream changelog is lowercase `changelog`;
   preserve source `ChangeLog` and Debian's separate `changelog.Debian`.
+- Windows distribution stages one verified `openi2pd.chm` from the
+  canonical manual tree. Audit the two ZIP inputs and the Inno Setup
+  `I2Pd_Manual` input together. Keep the CHM outside per-architecture
+  build directories and treat a failed CHM build as a packaging failure.
+  See [Windows HTML Help](../../../docs/build-system.md#windows-html-help).
 - Package Makefiles delegate procedural work without changing framework
   authority: Debian build flags and parallel options belong in its driver;
   the static payload helper travels with the copied `debian/` directory.

@@ -58,6 +58,9 @@ the CMake build or the POSIX front-end. Targets include
 `tests/Makefile` forwards to the root front-end and keeps no second build
 configuration. Windows build
 instructions are in [build_mingw.cmd](build/build_mingw.cmd).
+Windows distribution packages include `openi2pd.chm`. Open it from the
+extracted package or the installer's Start menu to browse and search the
+manuals offline. See the [Windows manual build guide](docs/build-system.md).
 
 Android app sources are integrated under [android](android/). The app builds
 the in-tree router through CMake/JNI; it no longer depends on a Git submodule or

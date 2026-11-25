@@ -122,6 +122,12 @@ branding validators or a build.
 
 ## Known issues and decisions
 
+- Windows Help is generated from the canonical manual sources under
+  `man/`. When editing a manual or its aliases, review the generated
+  topic links and index in the manual Windows CI job. Keep references
+  to unbundled system manuals readable as text. An unresolved project
+  reference is a generation error.
+
 - Android Lint locations identify ordinary blocks carrying Javadoc links
   or block tags, including single-line comments on the reported line.
   Verify opener-only diffs and guard non-private declarations against

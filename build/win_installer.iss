@@ -9,6 +9,10 @@
 #define I2Pd_AppName "openi2pd"
 #define I2Pd_Publisher "openi2pd contributors"
 
+#ifndef I2Pd_Manual
+  #error Pass the generated openi2pd.chm path as I2Pd_Manual
+#endif
+
 [Setup]
 AppName={#I2Pd_AppName}
 AppVersion={#I2Pd_TextVer}
@@ -52,6 +56,7 @@ Source: ..\i2pd-tui_x64.exe; DestDir: {app}; DestName: i2pd-tui.exe; Flags: igno
 Source: ..\tools_x32\*.exe; DestDir: {app}; Flags: ignoreversion; Check: not IsWin64; MinVersion: 10.0
 Source: ..\tools_x64\*.exe; DestDir: {app}; Flags: ignoreversion; Check: IsWin64; MinVersion: 10.0
 Source: ..\tools\LICENSE; DestDir: {app}\tools; DestName: LICENSE.i2pd-tools; Flags: ignoreversion
+Source: "{#I2Pd_Manual}"; DestDir: "{app}"; DestName: openi2pd.chm; Flags: ignoreversion
 Source: ..\README.md; DestDir: {app}; DestName: Readme.txt; Flags: onlyifdoesntexist
 Source: ..\contrib\i2pd.conf; DestDir: {userappdata}\i2pd; Flags: onlyifdoesntexist
 Source: ..\contrib\subscriptions.txt; DestDir: {userappdata}\i2pd; Flags: onlyifdoesntexist
@@ -61,6 +66,7 @@ Source: ..\contrib\tunnels.d\*; DestDir: {userappdata}\i2pd\tunnels.d; Flags: on
 
 [Icons]
 Name: {group}\openi2pd; Filename: {app}\i2pd.exe
+Name: "{group}\openi2pd Manual"; Filename: "{win}\hh.exe"; Parameters: """{app}\openi2pd.chm"""; WorkingDir: "{app}"
 Name: {group}\Readme; Filename: {app}\Readme.txt
 
 [UninstallDelete]

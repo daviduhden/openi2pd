@@ -34,6 +34,8 @@ list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake_modules")
 
 include(Version)
 set_version("${PROJECT_ROOT}/libi2pd/version.h" PROJECT_VERSION)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+  "${PROJECT_ROOT}/libi2pd/version.h")
 
 project(
   OpenI2Pd
@@ -86,14 +88,15 @@ endif()
 
 option(WITH_HARDENING       "Use hardening compiler flags"                 OFF)
 option(I2PD_WARNINGS_AS_ERRORS "Treat project target warnings as errors"    OFF)
-option(WITH_LIBRARY         "Install libraries and headers"                ON)
-option(WITH_BINARY          "Build the router executable"                  ON)
 # WITH_LIBRARY controls the install surface. The native archives also
 # serve as link inputs for in-tree executables and JNI.
+option(WITH_LIBRARY         "Install libraries and headers"                ON)
+option(WITH_BINARY          "Build the router executable"                  ON)
 option(I2PD_BUILD_TUI       "Build the TUI (ncursesw on Unix, Win32 on Windows)" ON)
 option(I2PD_TUI_REQUIRED    "Fail configuration when the Unix TUI dependency is missing" ON)
 option(I2PD_BUILD_TOOLS     "Build i2pd auxiliary tools"                   ON)
 option(I2PD_INSTALL_DOCS   "Install documentation and branding assets"    ON)
+option(I2PD_BUILD_WINDOWS_MANUAL "Build and install Microsoft HTML Help" OFF)
 option(I2PD_INSTALL_CONFIG "Install the sample router configuration"      ON)
 option(I2PD_PERL_CRITIC    "Run optional Perl::Critic checks in CTest"    OFF)
 option(I2PD_REQUIRE_PERL    "Fail configuration when the Perl test helper is missing" OFF)
@@ -1212,6 +1215,17 @@ if(TARGET i2pd-tui AND UNIX)
     DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/apps
     RENAME openi2pd.png
     COMPONENT Tui)
+endif()
+
+if(I2PD_BUILD_WINDOWS_MANUAL)
+  if(NOT WIN32)
+    message(FATAL_ERROR "I2PD_BUILD_WINDOWS_MANUAL is a Windows distribution option")
+  endif()
+  include(cmake/WindowsManual.cmake)
+  i2pd_add_windows_manual("${PROJECT_VERSION}" windows_manual_chm)
+  install(FILES "${windows_manual_chm}"
+    DESTINATION "${CMAKE_INSTALL_DOCDIR}"
+    COMPONENT Documentation)
 endif()
 
 if(I2PD_INSTALL_DOCS)
