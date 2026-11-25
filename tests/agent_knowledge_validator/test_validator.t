@@ -11,6 +11,7 @@ use warnings;
 use 5.016;
 use utf8;
 
+use Carp           ();
 use Cwd            qw(abs_path getcwd);
 use File::Basename qw(dirname);
 use File::Copy     qw(copy);
@@ -55,7 +56,7 @@ sub create_fixture_symlink {
         }
     }
     die "create symlink fixture: $reason\n" if !$linked && $^O ne 'MSWin32';
-    $reason =~ s/\s+/ /g;
+    $reason =~ s/\s+/ /xg;
     return ( $linked, $reason );
 }
 
@@ -112,7 +113,7 @@ SKILL
         # Copy its real files without following a source-tree symlink.
         my $library = File::Spec->catdir( $source_root, 'scripts', 'lib' );
         die "missing validator library tree\n"
-          unless -d main::fs_native($library) && !-l main::fs_native($library);
+          if !-d main::fs_native($library) || -l main::fs_native($library);
         File::Find::find(
             {
                 no_chdir => 1,
@@ -144,13 +145,13 @@ SKILL
         my $hooks = File::Spec->catdir( "$temporary", 'empty-hooks' );
         File::Path::make_path($hooks);
         $self->git( 'config', 'core.hooksPath', $hooks );
-        $self->write( 'AGENTS.md',       $agent_text );
-        $self->write( 'README.md',       "Repository fixture.\n" );
-        $self->write( 'src/example.cpp', "int value = 1;\n" );
-        $self->write( '.agents/skills/example/SKILL.md', $skill_text );
+        $self->write_fixture( 'AGENTS.md',       $agent_text );
+        $self->write_fixture( 'README.md',       "Repository fixture.\n" );
+        $self->write_fixture( 'src/example.cpp', "int value = 1;\n" );
+        $self->write_fixture( '.agents/skills/example/SKILL.md', $skill_text );
         $self->commit('baseline');
         $self->{base} = $self->git( 'rev-parse', 'HEAD' );
-        $self->{base} =~ s/\s+\z//;
+        $self->{base} =~ s/\s+\z//x;
         return $self;
     }
 
@@ -158,12 +159,12 @@ SKILL
         my ( $self, $relative ) = @_;
         return main::fs_native(
             File::Spec->catfile(
-                $self->{root}, split m{/}, main::fs_text($relative)
+                $self->{root}, split m{/}x, main::fs_text($relative)
             )
         );
     }
 
-    sub write {
+    sub write_fixture {
         my ( $self, $relative, $content ) = @_;
         my $path = $self->path($relative);
         File::Path::make_path( File::Basename::dirname($path) );
@@ -174,7 +175,7 @@ SKILL
         return;
     }
 
-    sub read {
+    sub read_fixture {
         my ( $self, $relative ) = @_;
         open my $file, '<:raw:encoding(UTF-8)', $self->path($relative)
           or die "open fixture: $!\n";
@@ -182,6 +183,28 @@ SKILL
         my $text = <$file>;
         close $file or die "close fixture: $!\n";
         return defined $text ? $text : '';
+    }
+
+    sub spawn_command {
+        my ( $input, $stdout, $stderr, @command ) = @_;
+        local %ENV = (
+            %ENV,
+            GIT_CONFIG_NOSYSTEM => 1,
+            GIT_CONFIG_GLOBAL   => File::Spec->devnull(),
+            GIT_TERMINAL_PROMPT => 0,
+        );
+        delete @ENV{
+            qw(GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR
+              GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES
+              GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT GIT_CEILING_DIRECTORIES
+              GIT_TEMPLATE_DIR PERL5LIB PERL5OPT)
+        };
+        my @argv = map { main::fs_native($_) } @command;
+        return IPC::Open3::open3(
+            ${$input},
+            '>&' . fileno($stdout),
+            '>&' . fileno($stderr), @argv
+        );
     }
 
     sub run_command {
@@ -204,32 +227,15 @@ SKILL
         # never deadlock its child. List-form Open3 never invokes a shell.
         my $previous = Cwd::getcwd();
         chdir main::fs_native($cwd) or die "enter fixture directory: $!\n";
-        my ( $pid, $input, $spawn_error );
-        {
-            local %ENV = %ENV;
-            delete @ENV{
-                qw(GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR
-                  GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES
-                  GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT GIT_CEILING_DIRECTORIES
-                  GIT_TEMPLATE_DIR PERL5LIB PERL5OPT)
-            };
-            $ENV{GIT_CONFIG_NOSYSTEM} = 1;
-            $ENV{GIT_CONFIG_GLOBAL}   = File::Spec->devnull();
-            $ENV{GIT_TERMINAL_PROMPT} = 0;
-            eval {
-                my @argv = map { main::fs_native($_) } @command;
-                $pid = IPC::Open3::open3(
-                    $input,
-                    '>&' . fileno($stdout),
-                    '>&' . fileno($stderr), @argv
-                );
-                1;
-            } or $spawn_error = $@ || 'child spawn failed';
-        }
+        my $input;
+        my $pid = eval { spawn_command( \$input, $stdout, $stderr, @command ) };
+        my $spawn_error = $@;
         chdir $previous or die "restore fixture directory: $!\n";
-        die $spawn_error if defined $spawn_error;
+        Carp::croak( $spawn_error || "child spawn failed\n" )
+          unless defined $pid;
         close $input or die "close child input: $!\n";
         my $waited;
+
         while (1) {
             $waited = waitpid( $pid, 0 );
             next if $waited == -1 && $! == Errno::EINTR();
@@ -289,8 +295,8 @@ SKILL
 
     sub update_agent {
         my ($self) = @_;
-        $self->write( 'AGENTS.md',
-            $self->read('AGENTS.md')
+        $self->write_fixture( 'AGENTS.md',
+            $self->read_fixture('AGENTS.md')
               . "\nWhen parser boundaries change, update examples and rerun compatibility review.\n"
         );
         return;
@@ -318,38 +324,36 @@ contract_case 'clean worktree passes' => sub {
     my ($f) = @_;
     my $result = $f->run_validator( '--scope', 'worktree' );
     exit_is( $result, 0, 'clean worktree exit status' );
-    like( $result->{stdout}, qr/Status: PASS/, 'pass summary' );
-    like( $result->{stdout}, qr/Errors: 0/,    'zero errors' );
+    like( $result->{stdout}, qr/Status:\x20PASS/x, 'pass summary' );
+    like( $result->{stdout}, qr/Errors:\x200/x,    'zero errors' );
 };
 
 contract_case 'code change without knowledge update fails' => sub {
     my ($f) = @_;
-    $f->write( 'src/example.cpp', "int value = 2;\n" );
+    $f->write_fixture( 'src/example.cpp', "int value = 2;\n" );
     my $result = $f->run_validator( '--scope', 'worktree' );
     exit_is( $result, 1, 'unsynchronized code fails' );
-    like( $result->{stdout}, qr/\[FAIL\] AK001/, 'AK001 names the failure' );
+    like( $result->{stdout}, qr/\[FAIL\]\x20AK001/x,
+        'AK001 names the failure' );
 };
 
 contract_case 'code and agent update passes with review warning' => sub {
     my ($f) = @_;
-    $f->write( 'src/example.cpp', "int value = 2;\n" );
+    $f->write_fixture( 'src/example.cpp', "int value = 2;\n" );
     $f->update_agent();
     my $result = $f->run_validator( '--scope', 'worktree' );
     exit_is( $result, 0, 'substantive update passes' );
-    like( $result->{stdout}, qr/\[PASS\] AK001/, 'synchronization passes' );
-    like(
-        $result->{stdout},
-        qr/\[WARN\] AK004/,
-        'semantic relevance still requires review'
-    );
+    like( $result->{stdout}, qr/\[PASS\]\x20AK001/x, 'synchronization passes' );
+    like( $result->{stdout}, qr/\[WARN\]\x20AK004/x,
+        'semantic relevance still requires review' );
 };
 
 contract_case 'code and skill update passes' => sub {
     my ($f) = @_;
-    $f->write( 'src/example.cpp', "int value = 2;\n" );
+    $f->write_fixture( 'src/example.cpp', "int value = 2;\n" );
     my $path = '.agents/skills/example/SKILL.md';
-    $f->write( $path,
-        $f->read($path)
+    $f->write_fixture( $path,
+        $f->read_fixture($path)
           . "\nWhen this parser changes, retain compatibility examples in this skill.\n"
     );
     exit_is( $f->run_validator( '--scope', 'worktree' ),
@@ -358,43 +362,46 @@ contract_case 'code and skill update passes' => sub {
 
 contract_case 'cosmetic knowledge change fails' => sub {
     my ($f) = @_;
-    my $text = $f->read('AGENTS.md');
+    my $text = $f->read_fixture('AGENTS.md');
     $text =~ s/operational guidance/operational  guidance/;
-    $f->write( 'AGENTS.md', $text );
+    $f->write_fixture( 'AGENTS.md', $text );
     my $result = $f->run_validator( '--scope', 'worktree' );
     exit_is( $result, 1, 'whitespace is not a substantive update' );
-    like( $result->{stdout}, qr/\[FAIL\] AK004/, 'cosmetic update flagged' );
+    like( $result->{stdout}, qr/\[FAIL\]\x20AK004/x,
+        'cosmetic update flagged' );
 };
 
 contract_case 'malformed skill fails structure' => sub {
     my ($f) = @_;
-    $f->write( 'src/example.cpp', "int value = 2;\n" );
+    $f->write_fixture( 'src/example.cpp', "int value = 2;\n" );
     $f->update_agent();
-    $f->write(
+    $f->write_fixture(
         '.agents/skills/example/SKILL.md',
         "---\nname: example\n---\n# Broken\n"
     );
     my $result = $f->run_validator( '--scope', 'worktree' );
     exit_is( $result, 1, 'broken skill rejected' );
-    like( $result->{stdout}, qr/\[FAIL\] AK002/, 'AK002 structure failure' );
+    like( $result->{stdout}, qr/\[FAIL\]\x20AK002/x,
+        'AK002 structure failure' );
 };
 
 contract_case 'broken local reference fails' => sub {
     my ($f) = @_;
     $f->update_agent();
-    $f->write( 'AGENTS.md',
-        $f->read('AGENTS.md') . "\nSee [missing](docs/missing.md).\n" );
+    $f->write_fixture( 'AGENTS.md',
+        $f->read_fixture('AGENTS.md') . "\nSee [missing](docs/missing.md).\n" );
     my $result = $f->run_validator( '--scope', 'worktree' );
     exit_is( $result, 1, 'broken link rejected' );
-    like( $result->{stdout}, qr/\[FAIL\] AK003/, 'AK003 reference failure' );
+    like( $result->{stdout}, qr/\[FAIL\]\x20AK003/x,
+        'AK003 reference failure' );
 };
 
 contract_case 'untracked project file is discovered' => sub {
     my ($f) = @_;
-    $f->write( 'src/new.cpp', "int value = 3;\n" );
+    $f->write_fixture( 'src/new.cpp', "int value = 3;\n" );
     my $result = $f->run_validator( '--scope', 'worktree' );
     exit_is( $result, 1, 'untracked code needs synchronization' );
-    like( $result->{stdout}, qr/src\/new\.cpp/, 'untracked path included' );
+    like( $result->{stdout}, qr/src\/new\.cpp/x, 'untracked path included' );
 };
 
 contract_case 'renamed project file is discovered' => sub {
@@ -402,7 +409,8 @@ contract_case 'renamed project file is discovered' => sub {
     $f->git( 'mv', 'src/example.cpp', 'src/renamed.cpp' );
     my $result = $f->run_validator( '--scope', 'worktree' );
     exit_is( $result, 1, 'rename needs synchronization' );
-    like( $result->{stdout}, qr/\[FAIL\] AK001/, 'rename is a project change' );
+    like( $result->{stdout}, qr/\[FAIL\]\x20AK001/x,
+        'rename is a project change' );
 };
 
 contract_case 'deleted project file is discovered' => sub {
@@ -410,12 +418,12 @@ contract_case 'deleted project file is discovered' => sub {
     unlink $f->path('src/example.cpp') or die "remove fixture: $!\n";
     my $result = $f->run_validator( '--scope', 'worktree' );
     exit_is( $result, 1, 'deletion needs synchronization' );
-    like( $result->{stdout}, qr/src\/example\.cpp/, 'deleted path included' );
+    like( $result->{stdout}, qr/src\/example\.cpp/x, 'deleted path included' );
 };
 
 contract_case 'staged and unstaged changes combine' => sub {
     my ($f) = @_;
-    $f->write( 'src/example.cpp', "int value = 2;\n" );
+    $f->write_fixture( 'src/example.cpp', "int value = 2;\n" );
     $f->git( 'add', 'src/example.cpp' );
     $f->update_agent();
     exit_is( $f->run_validator( '--scope', 'worktree' ),
@@ -424,11 +432,11 @@ contract_case 'staged and unstaged changes combine' => sub {
 
 contract_case 'valid range uses base and head' => sub {
     my ($f) = @_;
-    $f->write( 'src/example.cpp', "int value = 2;\n" );
+    $f->write_fixture( 'src/example.cpp', "int value = 2;\n" );
     $f->update_agent();
     $f->commit('code and knowledge');
     my $head = $f->git( 'rev-parse', 'HEAD' );
-    $head =~ s/\s+\z//;
+    $head =~ s/\s+\z//x;
     exit_is(
         $f->run_validator(
             '--scope', 'range', '--base', $f->{base}, '--head', $head
@@ -444,21 +452,18 @@ contract_case 'missing revision is an execution error' => sub {
       $f->run_validator( '--scope', 'range', '--base', 'missing', '--head',
         'HEAD' );
     exit_is( $result, 2, 'invalid revision exits two' );
-    like( $result->{stdout}, qr/\[FAIL\] AK005/,
+    like( $result->{stdout}, qr/\[FAIL\]\x20AK005/x,
         'revision failure classified' );
 };
 
 contract_case 'incompatible configuration is an execution error' => sub {
     my ($f) = @_;
-    $f->write( '.agent-knowledge-validator.toml',
+    $f->write_fixture( '.agent-knowledge-validator.toml',
         "[validator]\ncontract_version = \"9.9.9\"\n" );
     my $result = $f->run_validator( '--scope', 'worktree' );
     exit_is( $result, 2, 'contract version mismatch exits two' );
-    like(
-        $result->{stdout},
-        qr/\[FAIL\] AK005/,
-        'configuration failure classified'
-    );
+    like( $result->{stdout}, qr/\[FAIL\]\x20AK005/x,
+        'configuration failure classified' );
 };
 
 contract_case 'incompatible CLI arguments are usage errors' => sub {
@@ -467,7 +472,7 @@ contract_case 'incompatible CLI arguments are usage errors' => sub {
     exit_is( $result, 2, 'missing head is a usage error' );
     like(
         $result->{stderr},
-        qr/requires both --base and --head/,
+        qr/requires\x20both\x20--base\x20and\x20--head/x,
         'usage explains required pair'
     );
 };
@@ -478,12 +483,12 @@ contract_case 'help documents standard arguments' => sub {
     exit_is( $result, 0, 'help exits successfully' );
     like(
         $result->{stdout},
-        qr/--scope \{worktree,range\}/,
+        qr/--scope\x20\{worktree,range\}/x,
         'scope choices documented'
     );
     like(
         $result->{stdout},
-        qr/--format \{text,json\}/,
+        qr/--format\x20\{text,json\}/x,
         'output choices documented'
     );
 };
@@ -494,11 +499,8 @@ contract_case 'outside Git is an execution error' => sub {
     make_path($outside);
     my $result = $f->run_from( $outside, '--scope', 'worktree' );
     exit_is( $result, 2, 'outside repository exits two' );
-    like(
-        $result->{stdout},
-        qr/\[FAIL\] AK005/,
-        'repository discovery failure classified'
-    );
+    like( $result->{stdout}, qr/\[FAIL\]\x20AK005/x,
+        'repository discovery failure classified' );
 };
 
 contract_case 'JSON report retains schema and rule identities' => sub {
@@ -530,29 +532,26 @@ contract_case 'JSON report retains schema and rule identities' => sub {
 
 contract_case 'explicit exclusion does not trigger synchronization' => sub {
     my ($f) = @_;
-    $f->write( '.agent-knowledge-validator.toml',
+    $f->write_fixture( '.agent-knowledge-validator.toml',
 "[validator]\ncontract_version = \"1.0.0\"\nexclude_paths = [\"generated/**\"]\n"
     );
     $f->commit('configure generated path exclusion');
-    $f->write( 'generated/output.txt', "Generated output.\n" );
+    $f->write_fixture( 'generated/output.txt', "Generated output.\n" );
     exit_is( $f->run_validator( '--scope', 'worktree' ),
         0, 'explicit generated exclusion honored' );
 };
 
 contract_case 'conflicting directives remain review warnings' => sub {
     my ($f) = @_;
-    $f->write( 'AGENTS.md',
-            $f->read('AGENTS.md')
+    $f->write_fixture( 'AGENTS.md',
+            $f->read_fixture('AGENTS.md')
           . "\nOperators must retain exclusive control of validation results.\n"
           . "Operators must not retain exclusive control of validation results.\n"
     );
     my $result = $f->run_validator( '--scope', 'worktree' );
     exit_is( $result, 0, 'conflict warning does not invent a policy failure' );
-    like(
-        $result->{stdout},
-        qr/\[WARN\] AK006/,
-        'literal contradiction needs review'
-    );
+    like( $result->{stdout}, qr/\[WARN\]\x20AK006/x,
+        'literal contradiction needs review' );
 };
 
 # The original black-box cases above retain their behavioral
@@ -561,12 +560,12 @@ contract_case 'conflicting directives remain review warnings' => sub {
 contract_case 'range comparison starts at the merge base' => sub {
     my ($f) = @_;
     $f->git( 'checkout', '-q', '-b', 'side' );
-    $f->write( 'src/side.cpp', "int side = 1;\n" );
+    $f->write_fixture( 'src/side.cpp', "int side = 1;\n" );
     $f->commit('side-only change');
     my $side = $f->git( 'rev-parse', 'HEAD' );
-    $side =~ s/\s+\z//;
+    $side =~ s/\s+\z//x;
     $f->git( 'checkout', '-q', 'main' );
-    $f->write( 'src/example.cpp', "int value = 2;\n" );
+    $f->write_fixture( 'src/example.cpp', "int value = 2;\n" );
     $f->update_agent();
     $f->commit('main code and knowledge');
     exit_is(
@@ -591,11 +590,8 @@ contract_case 'revision operands cannot invoke a shell or Git options' => sub {
         exit_is( $result, 2, 'invalid revision is refused as data' );
         ok( !-e $f->path('injection-marker'),
             'revision never executes a command or output option' );
-        like(
-            $result->{stdout},
-            qr/\[FAIL\] AK005/,
-            'invalid operand classified as execution error'
-        );
+        like( $result->{stdout}, qr/\[FAIL\]\x20AK005/x,
+            'invalid operand classified as execution error' );
     }
 };
 
@@ -628,13 +624,13 @@ contract_case 'unique long-option abbreviations remain compatible' => sub {
     is( $report->{status}, 'PASS', 'abbreviated format still selects JSON' );
     $result = $f->run_validator('--hel');
     exit_is( $result, 0, 'unambiguous help abbreviation accepted' );
-    like( $result->{stdout}, qr/--scope/,
+    like( $result->{stdout}, qr/--scope/x,
         'help still documents complete option names' );
 };
 
 contract_case 'JSON errors preserve failure and execution exit codes' => sub {
     my ($f) = @_;
-    $f->write( 'src/example.cpp', "int value = 2;\n" );
+    $f->write_fixture( 'src/example.cpp', "int value = 2;\n" );
     my $result = $f->run_validator( '--scope', 'worktree', '--format', 'json' );
     exit_is( $result, 1, 'policy failure retains exit one in JSON mode' );
     my $report = JSON::PP->new->utf8->decode( $result->{stdout} );
@@ -655,7 +651,7 @@ contract_case 'JSON errors preserve failure and execution exit codes' => sub {
 
 sub shell_quote {
     my ($value) = @_;
-    $value =~ s/'/'\\''/g;
+    $value =~ s/'/'\\''/xg;
     return "'$value'";
 }
 
@@ -673,7 +669,7 @@ sub make_execution_marker {
 
 contract_case 'Git diff drivers cannot execute during inspection' => sub {
     my ($f) = @_;
-    $f->write( '.gitattributes', "src/*.cpp diff=contract-sentinel\n" );
+    $f->write_fixture( '.gitattributes', "src/*.cpp diff=contract-sentinel\n" );
     $f->commit('configure harmless diff attribute');
     my ( $converter, $converted ) = make_execution_marker( $f, 'textconv' );
     my ( $external,  $executed ) = make_execution_marker( $f, 'external-diff' );
@@ -684,7 +680,7 @@ contract_case 'Git diff drivers cannot execute during inspection' => sub {
     );
     $f->git( 'config', 'diff.external',
         shell_quote($^X) . ' ' . shell_quote($external) );
-    $f->write( 'src/example.cpp', "int value = 2;\n" );
+    $f->write_fixture( 'src/example.cpp', "int value = 2;\n" );
     $f->update_agent();
     exit_is( $f->run_validator( '--scope', 'worktree' ),
         0, 'diff inspection still reports ordinary changes' );
@@ -713,11 +709,11 @@ contract_case 'Git fsmonitor hooks cannot execute during discovery' => sub {
 
 contract_case 'quoted dotted inline and Unicode TOML settings' => sub {
     my ($f) = @_;
-    $f->write(
+    $f->write_fixture(
         'policies/team #1.md',
 "# Policy\n\n## Review process\n\nRetain é and 😀 in reference fixtures.\n"
     );
-    $f->write( '.agent-knowledge-validator.toml', <<'TOML' );
+    $f->write_fixture( '.agent-knowledge-validator.toml', <<'TOML' );
 [validator]
 contract_version = '1.0.0'
 exclude_paths = [
@@ -738,7 +734,7 @@ TOML
 
 contract_case 'multiline literal and basic TOML strings' => sub {
     my ($f) = @_;
-    $f->write( '.agent-knowledge-validator.toml', <<'TOML' );
+    $f->write_fixture( '.agent-knowledge-validator.toml', <<'TOML' );
 validator.contract_version = """1.0.0"""
 validator.minimum_changed_lines = 1_0
 validator.inline_path_checks = false
@@ -756,7 +752,7 @@ TOML
 contract_case 'TOML permits an implicit table parent to be declared later' =>
   sub {
     my ($f) = @_;
-    $f->write( '.agent-knowledge-validator.toml', <<'TOML' );
+    $f->write_fixture( '.agent-knowledge-validator.toml', <<'TOML' );
 [validator.required_phrases]
 "AGENTS.md" = ['Keep operational guidance accurate and reusable.']
 [validator]
@@ -839,26 +835,27 @@ contract_case 'invalid TOML and configuration types fail closed' => sub {
         ],
     );
     for my $case (@invalid) {
-        $f->write( '.agent-knowledge-validator.toml', $case->[1] );
+        $f->write_fixture( '.agent-knowledge-validator.toml', $case->[1] );
         my $result = $f->run_validator( '--scope', 'worktree' );
         exit_is( $result, 2, "$case->[0] rejected" );
-        like( $result->{stdout}, qr/\[FAIL\] AK005/, "$case->[0] uses AK005" );
+        like( $result->{stdout}, qr/\[FAIL\]\x20AK005/x,
+            "$case->[0] uses AK005" );
     }
 };
 
 contract_case 'configured minimum counts effective knowledge lines' => sub {
     my ($f) = @_;
-    $f->write(
+    $f->write_fixture(
         '.agent-knowledge-validator.toml',
         "[validator]\nminimum_changed_lines = 2\n"
     );
     $f->commit('configure effective-line minimum');
-    $f->write( 'src/example.cpp', "int value = 2;\n" );
+    $f->write_fixture( 'src/example.cpp', "int value = 2;\n" );
     $f->update_agent();
     exit_is( $f->run_validator( '--scope', 'worktree' ),
         1, 'one effective line does not meet two-line requirement' );
-    $f->write( 'AGENTS.md',
-        $f->read('AGENTS.md')
+    $f->write_fixture( 'AGENTS.md',
+        $f->read_fixture('AGENTS.md')
           . "Retain focused negative cases whenever parser trust boundaries change.\n"
     );
     exit_is( $f->run_validator( '--scope', 'worktree' ),
@@ -867,7 +864,7 @@ contract_case 'configured minimum counts effective knowledge lines' => sub {
 
 contract_case 'configured structural and text checks remain enforced' => sub {
     my ($f) = @_;
-    $f->write( '.agent-knowledge-validator.toml', <<'TOML' );
+    $f->write_fixture( '.agent-knowledge-validator.toml', <<'TOML' );
 [validator.required_headings]
 "AGENTS.md" = ['Continuous Agent & Skills Maintenance']
 [validator.strict_text]
@@ -875,53 +872,47 @@ contract_case 'configured structural and text checks remain enforced' => sub {
 TOML
     $f->commit('configure text constraints');
     $f->update_agent();
-    $f->write( 'AGENTS.md',
-        $f->read('AGENTS.md')
+    $f->write_fixture( 'AGENTS.md',
+        $f->read_fixture('AGENTS.md')
           . "Keep parser fixtures scoped and reproducible. \n" );
     my $result = $f->run_validator( '--scope', 'worktree' );
     exit_is( $result, 1, 'configured whitespace defect rejected' );
-    like(
-        $result->{stdout},
-        qr/\[FAIL\] AKX001/,
-        'extension retains its rule identity'
-    );
+    like( $result->{stdout}, qr/\[FAIL\]\x20AKX001/x,
+        'extension retains its rule identity' );
 };
 
 contract_case 'configured LF check sees carriage returns in raw UTF-8' => sub {
     my ($f) = @_;
-    $f->write( '.agent-knowledge-validator.toml',
+    $f->write_fixture( '.agent-knowledge-validator.toml',
         "[validator.strict_text]\n\"AGENTS.md\" = ['lf_only']\n" );
     $f->commit('configure LF-only instructions');
     $f->update_agent();
-    my $text = $f->read('AGENTS.md');
-    $text =~ s/\r?\n/\r\n/g;
-    $f->write( 'AGENTS.md', $text );
+    my $text = $f->read_fixture('AGENTS.md');
+    $text =~ s/\r?\n/\r\n/xg;
+    $f->write_fixture( 'AGENTS.md', $text );
     my $result = $f->run_validator( '--scope', 'worktree' );
     exit_is( $result, 1, 'CRLF is not normalized before the LF-only rule' );
-    like(
-        $result->{stdout},
-        qr/\[FAIL\] AKX001/,
-        'line-ending defect uses the configured rule identity'
-    );
+    like( $result->{stdout}, qr/\[FAIL\]\x20AKX001/x,
+        'line-ending defect uses the configured rule identity' );
 };
 
 contract_case 'local references reject repository escape' => sub {
     my ($f) = @_;
     $f->update_agent();
-    $f->write( 'AGENTS.md',
-        $f->read('AGENTS.md') . "\nSee [outside](../external.md).\n" );
+    $f->write_fixture( 'AGENTS.md',
+        $f->read_fixture('AGENTS.md') . "\nSee [outside](../external.md).\n" );
     my $result = $f->run_validator( '--scope', 'worktree' );
     exit_is( $result, 1, 'traversing reference rejected' );
-    like( $result->{stdout}, qr/\[FAIL\] AK003/,
+    like( $result->{stdout}, qr/\[FAIL\]\x20AK003/x,
         'reference escape uses AK003' );
 };
 
 contract_case 'UTF-8 repository paths and encoded Markdown links agree' => sub {
     my ($f) = @_;
-    $f->write( 'docs/資料/résumé.md', "Unicode reference fixture.\n" );
+    $f->write_fixture( 'docs/資料/résumé.md', "Unicode reference fixture.\n" );
     $f->update_agent();
-    $f->write( 'AGENTS.md',
-            $f->read('AGENTS.md')
+    $f->write_fixture( 'AGENTS.md',
+            $f->read_fixture('AGENTS.md')
           . "\nSee [literal](docs/資料/résumé.md).\n"
           . "See [encoded](docs/%E8%B3%87%E6%96%99/r%C3%A9sum%C3%A9.md).\n"
           . "See [mixed](docs/資料/r%C3%A9sumé.md).\n" );
@@ -933,7 +924,7 @@ contract_case 'UTF-8 repository paths and encoded Markdown links agree' => sub {
         # Only private fixture paths are recorded. Distinguish Git UTF-8
         # bytes from Perl's native path without altering either boundary.
         my $git_root = $f->git( 'rev-parse', '--show-toplevel' );
-        $git_root =~ s/\r?\n\z//;
+        $git_root =~ s/\r?\n\z//x;
         diag(
             'Win32 Unicode fixture root UTF-8 bytes: '
               . unpack(
@@ -962,13 +953,13 @@ contract_case 'Git NUL-delimited changes preserve newline filenames' => sub {
   SKIP: {
         skip 'Win32 filenames cannot contain newline characters', 2
           if $^O eq 'MSWin32';
-        $f->write( '.agent-knowledge-validator.toml',
+        $f->write_fixture( '.agent-knowledge-validator.toml',
             "[validator]\ninstruction_globs = ['policies/*.md']\n" );
         my $name = "policies/line\nbreak.md";
-        $f->write( $name, "Initial operational instructions.\n" );
+        $f->write_fixture( $name, "Initial operational instructions.\n" );
         $f->commit('configure newline filename instruction');
-        $f->write( 'src/example.cpp', "int value = 2;\n" );
-        $f->write( $name,
+        $f->write_fixture( 'src/example.cpp', "int value = 2;\n" );
+        $f->write_fixture( $name,
 "Initial operational instructions.\nRetain exact paths when reviewing parser trust boundaries.\n"
         );
         my $result =
@@ -990,19 +981,20 @@ contract_case 'Git pathspec metacharacters are literal knowledge paths' => sub {
   SKIP: {
         skip 'Win32 filenames cannot contain an asterisk', 3
           if $^O eq 'MSWin32';
-        $f->write( '.agent-knowledge-validator.toml',
+        $f->write_fixture( '.agent-knowledge-validator.toml',
             "[validator]\ninstruction_globs = ['policies/*.md']\n" );
         my $literal = 'policies/[ab]*.md';
         my $decoy   = 'policies/a-decoy.md';
-        $f->write( $literal,
+        $f->write_fixture( $literal,
             "Retain operational guidance exactly for this literal filename.\n"
         );
-        $f->write( $decoy, "Initial guidance for an independent parser.\n" );
+        $f->write_fixture( $decoy,
+            "Initial guidance for an independent parser.\n" );
         $f->commit('configure literal pathspec instruction');
-        $f->write( $literal,
+        $f->write_fixture( $literal,
             "Retain  operational guidance exactly for this literal filename.\n"
         );
-        $f->write( $decoy,
+        $f->write_fixture( $decoy,
 "Initial guidance for an independent parser.\nReview bounds and lifetime authority when modifying input parsers.\n"
         );
         my $result =
@@ -1033,15 +1025,13 @@ contract_case 'symlink references cannot escape the repository' => sub {
   SKIP: {
         skip "host cannot create symbolic links: $reason", 2 unless $linked;
         $f->update_agent();
-        $f->write( 'AGENTS.md',
-            $f->read('AGENTS.md') . "\nSee [outside](external-link.md).\n" );
+        $f->write_fixture( 'AGENTS.md',
+            $f->read_fixture('AGENTS.md')
+              . "\nSee [outside](external-link.md).\n" );
         my $result = $f->run_validator( '--scope', 'worktree' );
         exit_is( $result, 1, 'symlink traversal rejected' );
-        like(
-            $result->{stdout},
-            qr/\[FAIL\] AK003/,
-            'symlink escape uses AK003'
-        );
+        like( $result->{stdout}, qr/\[FAIL\]\x20AK003/x,
+            'symlink escape uses AK003' );
     }
 };
 

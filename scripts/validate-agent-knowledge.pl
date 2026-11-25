@@ -12,6 +12,7 @@
 use 5.016;
 use strict;
 use warnings;
+use Carp           qw(croak);
 use Cwd            qw(abs_path getcwd);
 use Encode         qw(decode encode FB_CROAK FB_DEFAULT);
 use File::Basename qw(basename dirname);
@@ -25,9 +26,9 @@ use JSON::PP;
 use lib "$Bin/lib";
 use Openi2pd::AgentKnowledge::TOML;
 
-use constant CONTRACT_VERSION => '1.0.0';
-use constant SCHEMA_VERSION   => '1.0';
-use constant CONFIG_NAME      => '.agent-knowledge-validator.toml';
+my $CONTRACT_VERSION = '1.0.0';
+my $SCHEMA_VERSION   = '1.0';
+my $CONFIG_NAME      = '.agent-knowledge-validator.toml';
 
 my %instruction_names = map { $_ => 1 } qw(
   AGENTS.md AGENT.md SKILL.md CLAUDE.md GEMINI.md
@@ -63,7 +64,7 @@ sub fs_native {
 
 sub trim {
     my ($text) = @_;
-    $text =~ s/\A\s+|\s+\z//g;
+    $text =~ s/\A\s+|\s+\z//xg;
     return $text;
 }
 
@@ -76,7 +77,7 @@ sub read_utf8 {
     my $text = decode( 'UTF-8', $bytes // '', FB_CROAK );
 
     # Match pathlib.read_text's universal-newline behavior.
-    $text =~ s/\r\n?/\n/g unless $preserve_newlines;
+    $text =~ s/\r\n?/\n/xg unless $preserve_newlines;
     return $text;
 }
 
@@ -142,18 +143,16 @@ sub git {
 
 sub reap_git {
     my ($pid) = @_;
-    while (1) {
-        my $result = waitpid $pid, 0;
-        return $? if $result == $pid;
-        next      if $result < 0 && $!{EINTR};
-        die "cannot reap git child: $!\n";
-    }
+    my $result;
+    do { $result = waitpid $pid, 0; } while $result < 0 && $!{EINTR};
+    die "cannot reap git child: $!\n" if $result != $pid;
+    return $?;
 }
 
 sub relative_path {
     my ( $root, $path ) = @_;
     my $relative = File::Spec->abs2rel( $path, $root );
-    $relative =~ s{\\}{/}g if $^O eq 'MSWin32';
+    $relative =~ s{\\}{/}xg if $^O eq 'MSWin32';
     return $relative;
 }
 
@@ -189,8 +188,8 @@ sub resolved_path {
         File::Spec->catdir( File::Spec->rootdir, @parts ), '' );
 }
 
-sub glob_match {
-    my ( $path, $pattern ) = @_;
+sub glob_tokens {
+    my ($pattern) = @_;
 
     # fnmatchcase treats slash and leading dots like ordinary
     # characters. Dynamic matching avoids regex backtracking on
@@ -213,7 +212,7 @@ sub glob_match {
             if ( $end == length $pattern ) { push @tokens, [ 'literal', '[' ]; }
             else {
                 my $class      = substr( $pattern, $at + 1, $end - $at - 1 );
-                my $negative   = $class =~ s/\A!//;
+                my $negative   = $class =~ s/\A!//x;
                 my @characters = split //, $class;
                 my @ranges;
                 for ( my $index = 0 ; $index < @characters ; ++$index ) {
@@ -241,6 +240,12 @@ sub glob_match {
         }
         else { push @tokens, [ 'literal', $char ]; }
     }
+    return @tokens;
+}
+
+sub glob_match {
+    my ( $path, $pattern ) = @_;
+    my @tokens     = glob_tokens($pattern);
     my @characters = split //, $path;
     my @reachable  = ( 1, (0) x @characters );
     for my $token (@tokens) {
@@ -279,14 +284,14 @@ sub matches_any {
 
 sub is_instruction {
     my ( $path, $extra ) = @_;
-    my @parts = split m{/}, $path;
+    my @parts = split m{/}x, $path;
     return 1
       if $instruction_names{ $parts[-1] }
-      || $parts[-1] =~ /(?:\.agent\.md|\.instructions\.md|\.mdc)\z/;
+      || $parts[-1] =~ /(?:\.agent\.md|\.instructions\.md|\.mdc)\z/x;
     return 1
       if @parts >= 2
       && $parts[-2] eq 'rules'
-      && grep { /\A\.(?:cursor|windsurf|continue)\z/ } @parts;
+      && grep { /\A\.(?:cursor|windsurf|continue)\z/x } @parts;
     return 1 if $path eq '.agents/skills/README.md';
     return matches_any( $path, $extra );
 }
@@ -321,7 +326,7 @@ sub discover_instructions {
 
 sub safe_config_path {
     my ($path) = @_;
-    return $path !~ m{\A/} && !grep { $_ eq '..' } split m{/}, $path;
+    return $path !~ m{\A/}x && !grep { $_ eq '..' } split m{/}x, $path;
 }
 
 sub string_array {
@@ -333,6 +338,65 @@ sub string_array {
           && ( $allow_empty || length trim( $value->{value} ) );
     }
     return 1;
+}
+
+sub parse_config_text_rules {
+    my ( $config, $settings ) = @_;
+    for my $key (qw(required_headings required_phrases strict_text)) {
+        next unless exists $settings->{$key};
+        my $mapping = $settings->{$key};
+        die $CONFIG_NAME
+          . ": $key must be a table"
+          . ( $key eq 'strict_text' ? '' : ' of paths to arrays' ) . "\n"
+          unless $mapping->{type} eq 'table';
+        for my $relative ( sort keys %{ $mapping->{value} } ) {
+            die $CONFIG_NAME
+              . ": $key paths must be repository-relative: $relative\n"
+              unless safe_config_path($relative);
+            my $values = $mapping->{value}{$relative};
+            die $CONFIG_NAME
+              . ": $key.$relative must be an array of non-empty strings\n"
+              unless string_array( $values, $key eq 'strict_text' );
+            my @strings = map { $_->{value} } @{ $values->{value} };
+            if ( $key eq 'strict_text' ) {
+                my %known = map { $_ => 1 }
+                  qw(ascii_only lf_only final_newline no_trailing_whitespace no_nul);
+                die $CONFIG_NAME
+                  . ": strict_text.$relative has an unknown rule\n"
+                  if grep { !$known{$_} } @strings;
+            }
+            $config->{$key}{$relative} = \@strings;
+        }
+    }
+    return;
+}
+
+sub parse_config_options {
+    my ( $config, $settings ) = @_;
+    if ( exists $settings->{skill_reference_prefixes} ) {
+        die $CONFIG_NAME . ": skill_reference_prefixes must be an array\n"
+          unless string_array( $settings->{skill_reference_prefixes}, 1 );
+        my @prefixes =
+          map { $_->{value} } @{ $settings->{skill_reference_prefixes}{value} };
+        die $CONFIG_NAME . ": skill_reference_prefixes must be an array\n"
+          if grep { !length } @prefixes;
+        $config->{skill_reference_prefixes} = \@prefixes;
+    }
+    if ( exists $settings->{inline_path_checks} ) {
+        die $CONFIG_NAME . ": inline_path_checks must be a boolean\n"
+          unless $settings->{inline_path_checks}{type} eq 'boolean';
+        $config->{inline_path_checks} = $settings->{inline_path_checks}{value};
+    }
+    if ( exists $settings->{minimum_changed_lines} ) {
+        my $node = $settings->{minimum_changed_lines};
+        die $CONFIG_NAME
+          . ": minimum_changed_lines must be an integer from 1 to 1000\n"
+          if $node->{type} ne 'integer'
+          || $node->{value} < 1
+          || $node->{value} > 1000;
+        $config->{minimum_changed_lines} = $node->{value};
+    }
+    return;
 }
 
 sub parse_config {
@@ -347,101 +411,57 @@ sub parse_config {
         inline_path_checks       => 0,
         minimum_changed_lines    => 1,
     };
-    my $path = File::Spec->catfile( $root, CONFIG_NAME );
+    my $path = File::Spec->catfile( $root, $CONFIG_NAME );
     return $config unless -e fs_native($path);
     my $parsed =
       eval { Openi2pd::AgentKnowledge::TOML->parse( read_utf8($path) ) };
-    die CONFIG_NAME . ": $@" if $@;
+    if ($@) {
+        my $error = $CONFIG_NAME . ": $@";
+        croak $error;
+    }
     my $top = $parsed->{value};
-    die CONFIG_NAME . ": only the [validator] table is supported\n"
+    die $CONFIG_NAME . ": only the [validator] table is supported\n"
       if grep { $_ ne 'validator' } keys %{$top};
     my $table = $top->{validator} // { type => 'table', value => {} };
-    die CONFIG_NAME . ": [validator] must be a table\n"
+    die $CONFIG_NAME . ": [validator] must be a table\n"
       unless $table->{type} eq 'table';
     my $settings = $table->{value};
     my %allowed = map       { $_ => 1 } ( 'contract_version', keys %{$config} );
     my @unknown = sort grep { !$allowed{$_} } keys %{$settings};
-    die CONFIG_NAME . ': unknown setting(s): ' . join( ', ', @unknown ) . "\n"
+    die $CONFIG_NAME . ': unknown setting(s): ' . join( ', ', @unknown ) . "\n"
       if @unknown;
 
     if ( exists $settings->{contract_version} ) {
         my $version = $settings->{contract_version};
-        die CONFIG_NAME
+        die $CONFIG_NAME
           . ": contract_version must be '"
-          . CONTRACT_VERSION . "'\n"
+          . $CONTRACT_VERSION . "'\n"
           unless $version->{type} eq 'string'
-          && $version->{value} eq CONTRACT_VERSION;
+          && $version->{value} eq $CONTRACT_VERSION;
     }
     for my $key (qw(exclude_paths instruction_globs)) {
         next unless exists $settings->{$key};
-        die CONFIG_NAME . ": $key must be an array of non-empty strings\n"
+        die $CONFIG_NAME . ": $key must be an array of non-empty strings\n"
           unless string_array( $settings->{$key}, 0 );
         for my $item ( @{ $settings->{$key}{value} } ) {
             my $entry = $item->{value};
-            die CONFIG_NAME
+            die $CONFIG_NAME
               . ": $key entries must be repository-relative: $entry\n"
               unless safe_config_path($entry);
             push @{ $config->{$key} }, $entry;
         }
     }
-    for my $key (qw(required_headings required_phrases strict_text)) {
-        next unless exists $settings->{$key};
-        my $mapping = $settings->{$key};
-        die CONFIG_NAME
-          . ": $key must be a table"
-          . ( $key eq 'strict_text' ? '' : ' of paths to arrays' ) . "\n"
-          unless $mapping->{type} eq 'table';
-        for my $relative ( sort keys %{ $mapping->{value} } ) {
-            die CONFIG_NAME
-              . ": $key paths must be repository-relative: $relative\n"
-              unless safe_config_path($relative);
-            my $values = $mapping->{value}{$relative};
-            die CONFIG_NAME
-              . ": $key.$relative must be an array of non-empty strings\n"
-              unless string_array( $values, $key eq 'strict_text' );
-            my @strings = map { $_->{value} } @{ $values->{value} };
-            if ( $key eq 'strict_text' ) {
-                my %known = map { $_ => 1 }
-                  qw(ascii_only lf_only final_newline no_trailing_whitespace no_nul);
-                die CONFIG_NAME
-                  . ": strict_text.$relative has an unknown rule\n"
-                  if grep { !$known{$_} } @strings;
-            }
-            $config->{$key}{$relative} = \@strings;
-        }
-    }
+    parse_config_text_rules( $config, $settings );
     my %known = map { $_ => 1 }
       @{ discover_instructions( $root, $config->{instruction_globs} ) };
     for my $key (qw(required_headings required_phrases)) {
         my @missing = sort grep { !$known{$_} } keys %{ $config->{$key} };
-        die CONFIG_NAME
+        die $CONFIG_NAME
           . ": $key references unknown instruction path(s): "
           . join( ', ', @missing ) . "\n"
           if @missing;
     }
-    if ( exists $settings->{skill_reference_prefixes} ) {
-        die CONFIG_NAME . ": skill_reference_prefixes must be an array\n"
-          unless string_array( $settings->{skill_reference_prefixes}, 1 );
-        my @prefixes =
-          map { $_->{value} } @{ $settings->{skill_reference_prefixes}{value} };
-        die CONFIG_NAME . ": skill_reference_prefixes must be an array\n"
-          if grep { !length } @prefixes;
-        $config->{skill_reference_prefixes} = \@prefixes;
-    }
-    if ( exists $settings->{inline_path_checks} ) {
-        die CONFIG_NAME . ": inline_path_checks must be a boolean\n"
-          unless $settings->{inline_path_checks}{type} eq 'boolean';
-        $config->{inline_path_checks} = $settings->{inline_path_checks}{value};
-    }
-    if ( exists $settings->{minimum_changed_lines} ) {
-        my $node = $settings->{minimum_changed_lines};
-        die CONFIG_NAME
-          . ": minimum_changed_lines must be an integer from 1 to 1000\n"
-          unless $node->{type} eq 'integer'
-          && $node->{value} >= 1
-          && $node->{value} <= 1000;
-        $config->{minimum_changed_lines} = $node->{value};
-    }
+    parse_config_options( $config, $settings );
     return $config;
 }
 
@@ -492,7 +512,7 @@ sub discover_changes {
             $merge,          $head
         );
     }
-    my @fields = split /\0/, $raw, -1;
+    my @fields = split /\0/x, $raw, -1;
     my %changes;
     while ( @fields >= 2 ) {
         my ( $status, $path ) = splice @fields, 0, 2;
@@ -501,7 +521,7 @@ sub discover_changes {
     }
     if ( $args->{scope} eq 'worktree' ) {
         for my $path (
-            split /\0/,
+            split /\0/x,
             git( $root, 1, 'ls-files', '--others', '--exclude-standard', '-z' )
           )
         {
@@ -514,12 +534,11 @@ sub discover_changes {
 sub normalize_line {
     my ($line) = @_;
     $line = trim($line);
-    return '' if !length($line) || $line =~ /\A(?:\#|<!--|-->)/;
-    return ''
-      if $line =~
-      /\A(?:updated?|generated|last[ -]updated|date|updated_at)\s*[:=]/i;
-    return '' if $line =~ /\A[-*_`~>| ]+\z/;
-    $line =~ s/\s+/ /g;
+    return '' if !length($line) || $line =~ /\A(?:\#|<!--|-->)/x;
+    my $metadata_key = qr/updated?|generated|last[ -]updated|date|updated_at/xi;
+    return '' if $line =~ /\A(?:$metadata_key)\s*[:=]/xi;
+    return '' if $line =~ /\A[-*_`~>|\x20]+\z/x;
+    $line =~ s/\s+/ /xg;
     return trim($line);
 }
 
@@ -535,9 +554,9 @@ sub changed_content {
         $path
     );
     my ( @added, @removed );
-    for my $line ( split /\R/, $diff ) {
-        next if $line     =~ /\A(?:\+\+\+|---)/;
-        next unless $line =~ /\A([+-])(.*)\z/s;
+    for my $line ( split /\R/x, $diff ) {
+        next if $line     =~ /\A(?:\+\+\+|---)/x;
+        next unless $line =~ /\A([+-])(.*)\z/xs;
         my ( $sign, $content ) = ( $1, normalize_line($2) );
         next unless length $content;
         push @{ $sign eq '+' ? \@added : \@removed }, $content;
@@ -548,7 +567,7 @@ sub changed_content {
         && !length git( $root, 0, 'ls-files', '--error-unmatch', '--', $path ) )
     {
         my $text = maybe_read( File::Spec->catfile( $root, $path ) );
-        push @added, grep { length } map { normalize_line($_) } split /\R/,
+        push @added, grep { length } map { normalize_line($_) } split /\R/x,
           $text
           if defined $text;
     }
@@ -580,20 +599,73 @@ sub substantive_update {
 
 sub has_heading {
     my ( $text, $heading ) = @_;
-    return $text =~ /^\#{2,}\s+\Q$heading\E\s*$/m;
+    return $text =~ /^\#{2,}\s+\Q$heading\E\s*$/xm;
 }
 
 sub frontmatter {
     my ($text) = @_;
-    return unless $text =~ /\A---\s*\n(.*?)\n---\s*(?:\n|\z)/s;
+    return unless $text =~ /\A---\s*\n(.*?)\n---\s*(?:\n|\z)/xs;
     my %fields;
-    for my $line ( split /\R/, $1 ) {
-        next unless $line =~ /^([A-Za-z0-9_-]+):\s*(.*?)\s*$/;
+    for my $line ( split /\R/x, $1 ) {
+        next unless $line =~ /^([A-Za-z0-9_-]+):\s*(.*?)\s*$/x;
         my ( $key, $value ) = ( $1, $2 );
-        $value =~ s/\A["']+|["']+\z//g;
+        $value =~ s/\A["']+|["']+\z//xg;
         $fields{$key} = $value;
     }
     return \%fields;
+}
+
+sub validate_instruction_type {
+    my ( $relative, $text, $errors ) = @_;
+    my $name = basename($relative);
+    if ( $relative eq 'AGENTS.md' ) {
+        push @{$errors},
+          [ $relative, 'missing Continuous Agent & Skills Maintenance section' ]
+          unless has_heading( $text, 'Continuous Agent & Skills Maintenance' );
+    }
+    elsif ( $name eq 'SKILL.md' ) {
+        my $fields = frontmatter($text);
+        if ( !defined $fields ) {
+            push @{$errors},
+              [ $relative, 'missing or malformed YAML frontmatter delimiters' ];
+        }
+        else {
+            for my $key (qw(name description)) {
+                push @{$errors},
+                  [ $relative, "frontmatter requires non-empty $key" ]
+                  unless length trim( $fields->{$key} // '' );
+            }
+            push @{$errors},
+              [ $relative, 'frontmatter name must match the skill directory' ]
+              if $fields->{name}
+              && trim( $fields->{name} ) ne basename( dirname($relative) );
+        }
+        push @{$errors},
+          [ $relative, 'missing Maintenance & Continuous Learning section' ]
+          unless has_heading( $text, 'Maintenance & Continuous Learning' );
+    }
+    elsif ( $name =~ /\.agent\.md\z/x ) {
+        if ( $text =~ /\A---/x ) {
+            my $fields = frontmatter($text);
+            if ( !defined $fields ) {
+                push @{$errors},
+                  [ $relative, 'malformed YAML frontmatter delimiters' ];
+            }
+            elsif (!length trim( $fields->{name} // '' )
+                || !length trim( $fields->{description} // '' ) )
+            {
+                push @{$errors},
+                  [
+                    $relative,
+                    'agent frontmatter requires name and description'
+                  ];
+            }
+        }
+        push @{$errors},
+          [ $relative, 'missing Post-Change Knowledge Synchronization section' ]
+          unless has_heading( $text, 'Post-Change Knowledge Synchronization' );
+    }
+    return;
 }
 
 sub validate_structure {
@@ -614,76 +686,45 @@ sub validate_structure {
               unless has_heading( $text, $heading );
         }
         for my $phrase ( @{ $config->{required_phrases}{$relative} // [] } ) {
-            ( my $normalized = $text )   =~ s/\s+/ /g;
-            ( my $expected   = $phrase ) =~ s/\s+/ /g;
+            ( my $normalized = $text )   =~ s/\s+/ /xg;
+            ( my $expected   = $phrase ) =~ s/\s+/ /xg;
             push @errors,
               [ $relative, "missing configured policy text: $phrase" ]
               if index( $normalized, $expected ) < 0;
         }
-        my $name = basename($relative);
-        if ( $relative eq 'AGENTS.md' ) {
-            push @errors,
-              [
-                $relative,
-                'missing Continuous Agent & Skills Maintenance section'
-              ]
-              unless has_heading( $text,
-                'Continuous Agent & Skills Maintenance' );
-        }
-        elsif ( $name eq 'SKILL.md' ) {
-            my $fields = frontmatter($text);
-            if ( !defined $fields ) {
-                push @errors,
-                  [
-                    $relative,
-                    'missing or malformed YAML frontmatter delimiters'
-                  ];
-            }
-            else {
-                for my $key (qw(name description)) {
-                    push @errors,
-                      [ $relative, "frontmatter requires non-empty $key" ]
-                      unless length trim( $fields->{$key} // '' );
-                }
-                push @errors,
-                  [
-                    $relative,
-                    'frontmatter name must match the skill directory'
-                  ]
-                  if $fields->{name}
-                  && trim( $fields->{name} ) ne basename( dirname($relative) );
-            }
-            push @errors,
-              [ $relative, 'missing Maintenance & Continuous Learning section' ]
-              unless has_heading( $text, 'Maintenance & Continuous Learning' );
-        }
-        elsif ( $name =~ /\.agent\.md\z/ ) {
-            if ( $text =~ /\A---/ ) {
-                my $fields = frontmatter($text);
-                if ( !defined $fields ) {
-                    push @errors,
-                      [ $relative, 'malformed YAML frontmatter delimiters' ];
-                }
-                elsif (!length trim( $fields->{name} // '' )
-                    || !length trim( $fields->{description} // '' ) )
-                {
-                    push @errors,
-                      [
-                        $relative,
-                        'agent frontmatter requires name and description'
-                      ];
-                }
-            }
-            push @errors,
-              [
-                $relative,
-                'missing Post-Change Knowledge Synchronization section'
-              ]
-              unless has_heading( $text,
-                'Post-Change Knowledge Synchronization' );
-        }
+        validate_instruction_type( $relative, $text, \@errors );
     }
     return \@errors;
+}
+
+sub validate_strict_text {
+    my ( $root, $relative, $text, $config, $errors ) = @_;
+    for my $pattern ( sort keys %{ $config->{strict_text} } ) {
+        next unless glob_match( $relative, $pattern );
+        my %rules = map { $_ => 1 } @{ $config->{strict_text}{$pattern} };
+
+        # Universal newline decoding is correct for prose parsing,
+        # but the LF rule must inspect the original decoded bytes.
+        my $raw_text =
+          $rules{lf_only}
+          ? eval { read_utf8( File::Spec->catfile( $root, $relative ), 1 ) }
+          : '';
+        push @{$errors},
+          [ $relative, 'configured text rule requires LF line endings' ]
+          if $rules{lf_only} && defined($raw_text) && $raw_text =~ /\r/x;
+        push @{$errors},
+          [ $relative, 'configured text rule requires a final newline' ]
+          if $rules{final_newline} && length($text) && $text !~ /\n\z/x;
+        push @{$errors},
+          [ $relative, 'configured text rule forbids trailing whitespace' ]
+          if $rules{no_trailing_whitespace} && $text =~ /[\t\x20]+$/xm;
+        push @{$errors}, [ $relative, 'configured text rule forbids NUL bytes' ]
+          if $rules{no_nul} && index( $text, "\0" ) >= 0;
+        push @{$errors},
+          [ $relative, 'configured text rule requires ASCII text' ]
+          if $rules{ascii_only} && $text =~ /[^\x00-\x7f]/x;
+    }
+    return;
 }
 
 sub validate_extensions {
@@ -692,36 +733,11 @@ sub validate_extensions {
     for my $relative ( @{$paths} ) {
         my $text = maybe_read( File::Spec->catfile( $root, $relative ) );
         next unless defined $text;
-        for my $pattern ( sort keys %{ $config->{strict_text} } ) {
-            next unless glob_match( $relative, $pattern );
-            my %rules = map { $_ => 1 } @{ $config->{strict_text}{$pattern} };
-
-            # Universal newline decoding is correct for prose parsing,
-            # but the LF rule must inspect the original decoded bytes.
-            my $raw_text =
-              $rules{lf_only}
-              ? eval { read_utf8( File::Spec->catfile( $root, $relative ), 1 ) }
-              : '';
-            push @errors,
-              [ $relative, 'configured text rule requires LF line endings' ]
-              if $rules{lf_only} && defined($raw_text) && $raw_text =~ /\r/;
-            push @errors,
-              [ $relative, 'configured text rule requires a final newline' ]
-              if $rules{final_newline} && length($text) && $text !~ /\n\z/;
-            push @errors,
-              [ $relative, 'configured text rule forbids trailing whitespace' ]
-              if $rules{no_trailing_whitespace} && $text =~ /[\t ]+$/m;
-            push @errors,
-              [ $relative, 'configured text rule forbids NUL bytes' ]
-              if $rules{no_nul} && index( $text, "\0" ) >= 0;
-            push @errors,
-              [ $relative, 'configured text rule requires ASCII text' ]
-              if $rules{ascii_only} && $text =~ /[^\x00-\x7f]/;
-        }
-        if ( $relative =~ /\.agent\.md\z/
+        validate_strict_text( $root, $relative, $text, $config, \@errors );
+        if ( $relative =~ /\.agent\.md\z/x
             && @{ $config->{skill_reference_prefixes} } )
         {
-            while ( $text =~ /`([^`]+)`/g ) {
+            while ( $text =~ /`([^`]+)`/xg ) {
                 my $reference = $1;
                 if (
                     (
@@ -737,11 +753,11 @@ sub validate_extensions {
             }
         }
         if ( $config->{inline_path_checks} ) {
-            while ( $text =~ /`([^`]+)`/g ) {
+            while ( $text =~ /`([^`]+)`/xg ) {
                 my $target = $1;
-                next if $target =~ m{\A/} || $target =~ /\s/;
+                next if $target =~ m{\A/}x || $target =~ /\s/x;
                 next
-                  unless basename($target) =~ /.\.(?:md|pl|pm|t|8|ignore)\z/
+                  unless basename($target) =~ /.\.(?:md|pl|pm|t|8|ignore)\z/x
                   || $target eq 'Makefile'
                   || $target eq 'LICENSE';
                 unless (
@@ -776,28 +792,28 @@ sub validate_references {
         my $file = File::Spec->catfile( $root, $relative );
         my $text = maybe_read($file);
         next unless defined $text;
-        while ( $text =~ /(?<!!)\[[^\]]*\]\(([^)]+)\)/g ) {
+        while ( $text =~ /(?<!!)\[[^\]]*\]\(([^)]+)\)/xg ) {
             my $target        = trim($1);
-            my ($destination) = split /\s+/, $target, 2;
-            $destination =~ s/\A[<>]+|[<>]+\z//g;
+            my ($destination) = split /\s+/x, $target, 2;
+            $destination =~ s/\A[<>]+|[<>]+\z//xg;
             next
-              if $destination =~ /\A[A-Za-z][A-Za-z0-9+.-]*:/
-              || $destination =~ m{\A//[^/]};
-            ( my $local = $destination ) =~ s/[?#].*\z//s;
+              if $destination =~ /\A[A-Za-z][A-Za-z0-9+.-]*:/x
+              || $destination =~ m{\A//[^/]}x;
+            ( my $local = $destination ) =~ s/[?#].*\z//xs;
             next unless length $local;
             $local = encode( 'UTF-8', $local );
-            $local =~ s/%([0-9a-fA-F]{2})/pack 'C', hex $1/ge;
+            $local =~ s/%([0-9a-fA-F]{2})/pack 'C', hex $1/xge;
 
             # urllib.unquote replaces invalid percent-encoded UTF-8.
             $local = decode( 'UTF-8', $local, FB_DEFAULT );
             my $candidate =
-              $local =~ s{\A/+}{}
+              $local =~ s{\A/+}{}x
               ? File::Spec->catfile( $root,          $local )
               : File::Spec->catfile( dirname($file), $local );
             my $resolved = resolved_path($candidate);
             my $inside   = relative_path( $root, $resolved );
             if ( File::Spec->file_name_is_absolute($inside)
-                || $inside =~ m{\A\.\.(?:/|\z)} )
+                || $inside =~ m{\A\.\.(?:/|\z)}x )
             {
                 push @errors,
                   [
@@ -817,24 +833,28 @@ sub validate_references {
 sub duplicates_and_conflicts {
     my ( $root, $paths ) = @_;
     my ( %content, @conflicts );
+    my $negative_modal =
+      qr/must[ ]not|mustn't|should[ ]not|do[ ]not|don't|never/xi;
+    my $positive_modal = qr/must|should|always/xi;
     for my $relative ( @{$paths} ) {
         my $text = maybe_read( File::Spec->catfile( $root, $relative ) );
         next unless defined $text;
-        ( my $normalized = $text ) =~ s/\s+/ /g;
+        ( my $normalized = $text ) =~ s/\s+/ /xg;
         $normalized = trim($normalized);
         push @{ $content{$normalized} }, $relative if length $normalized;
         my %actions;
-        for my $line ( split /\R/, $text ) {
-            next
-              unless $line =~
-/^\s*(.*?)\b(must not|mustn't|must|should not|should|do not|don't|never|always)\b\s+([^.!?]{12,})[.!?]?\s*$/i;
+        for my $line ( split /\R/x, $text ) {
+            next unless $line =~ /
+                ^ \s* (.*?) \b ($negative_modal|$positive_modal) \b
+                \s+ ([^.!?]{12,}) [.!?]? \s* $
+            /x;
             my ( $prefix, $modal, $action ) = ( $1, lc $2, $3 );
             $action = lc "$prefix $action";
-            $action =~ s/[^a-z0-9]+/ /g;
+            $action =~ s/[^a-z0-9]+/ /xg;
             $action = trim($action);
             next if length($action) < 12;
             my $polarity =
-              $modal =~ /\A(?:must not|mustn't|should not|do not|don't|never)\z/
+              $modal =~ /\A(?:$negative_modal)\z/x
               ? 'negative'
               : 'positive';
             $actions{$action}{$polarity} = 1;
@@ -883,6 +903,20 @@ sub error_checks {
             'No duplicate or conflicting instructions detected'
         ),
     ];
+}
+
+sub collect_skill_names {
+    my ( $root, $instructions ) = @_;
+    my %skills;
+    for my $relative ( @{$instructions} ) {
+        next unless basename($relative) eq 'SKILL.md';
+        my $text = maybe_read( File::Spec->catfile( $root, $relative ) );
+        next unless defined $text;
+        my $fields = frontmatter($text);
+        $skills{ trim( $fields->{name} ) } = 1
+          if $fields && length trim( $fields->{name} // '' );
+    }
+    return \%skills;
 }
 
 sub run_validation {
@@ -946,17 +980,9 @@ sub run_validation {
 'Fix the required headings and simple frontmatter fields; frontmatter checks are partial and are not full YAML validation.'
       )
       : result( 'AK002', 'PASS', 'Agent and skill structure valid' );
-    my %skills;
-    for my $relative ( @{$instructions} ) {
-        next unless basename($relative) eq 'SKILL.md';
-        my $text = maybe_read( File::Spec->catfile( $root, $relative ) );
-        next unless defined $text;
-        my $fields = frontmatter($text);
-        $skills{ trim( $fields->{name} ) } = 1
-          if $fields && length trim( $fields->{name} // '' );
-    }
+    my $skills = collect_skill_names( $root, $instructions );
     my $extension_errors =
-      validate_extensions( $root, $instructions, $config, \%skills );
+      validate_extensions( $root, $instructions, $config, $skills );
     my $extension =
       @{$extension_errors}
       ? result(
@@ -997,8 +1023,8 @@ sub run_validation {
       : result( 'AK004', 'PASS', 'No suspicious knowledge update detected' );
     my ( $duplicates, $conflicts ) =
       duplicates_and_conflicts( $root, $instructions );
-    my @conflict_files = ( map { split /, /, $_ } @{$duplicates} );
-    push @conflict_files, map { ( split /:/, $_, 2 )[0] } @{$conflicts};
+    my @conflict_files = ( map { split /,\x20/x, $_ } @{$duplicates} );
+    push @conflict_files, map { ( split /:/x, $_, 2 )[0] } @{$conflicts};
     my $conflict =
       @{$duplicates} || @{$conflicts}
       ? result(
@@ -1028,8 +1054,8 @@ sub print_report {
     my @errors   = grep { $_->{status} eq 'FAIL' } @{$checks};
     my @warnings = grep { $_->{status} eq 'WARN' } @{$checks};
     my $report   = {
-        schema_version   => SCHEMA_VERSION,
-        contract_version => CONTRACT_VERSION,
+        schema_version   => $SCHEMA_VERSION,
+        contract_version => $CONTRACT_VERSION,
         status           => @errors ? 'FAIL' : 'PASS',
         checks           => $checks,
         errors           => \@errors,
@@ -1062,10 +1088,26 @@ sub usage {
 'usage: validate-agent-knowledge.pl --scope {worktree,range} [--base BASE] [--head HEAD] [--format {text,json}]'
       . "\n\n";
     print {$stream} 'Validate Agent Knowledge contract '
-      . CONTRACT_VERSION
+      . $CONTRACT_VERSION
       . " using only Perl core modules.\n\n";
     print {$stream}
 "  --scope {worktree,range}  required comparison scope\n  --base BASE              base Git revision; required with --scope range\n  --head HEAD              head Git revision; required with --scope range\n  --format {text,json}     report format (default: text)\n  --help, -h               show this help message\n";
+    return;
+}
+
+sub argument_error {
+    my ( $parsed, $arguments, $args ) = @_;
+    return 'unrecognized arguments' if !$parsed || @{$arguments};
+    return 'the following arguments are required: --scope'
+      unless defined $args->{scope};
+    return '--scope must be worktree or range'
+      if $args->{scope} ne 'worktree' && $args->{scope} ne 'range';
+    return '--format must be text or json'
+      if $args->{format} ne 'text' && $args->{format} ne 'json';
+    return '--scope range requires both --base and --head'
+      if $args->{scope} eq 'range' && ( !$args->{base} || !$args->{head} );
+    return '--base and --head are only valid with --scope range'
+      if $args->{scope} eq 'worktree' && ( $args->{base} || $args->{head} );
     return;
 }
 
@@ -1078,7 +1120,7 @@ sub main {
     # option.
     for my $argument (@arguments) {
         last if $argument eq '--';
-        next unless $argument =~ /\A--([^=]+)/;
+        next unless $argument =~ /\A--([^=]+)/x;
         my $name = $1;
         my @matching =
           grep { index( $_, $name ) == 0 } qw(scope base head format help);
@@ -1102,23 +1144,7 @@ sub main {
         usage( \*STDOUT );
         return 0;
     }
-    my $error;
-    if    ( !$parsed || @arguments ) { $error = 'unrecognized arguments'; }
-    elsif ( !defined $args{scope} ) {
-        $error = 'the following arguments are required: --scope';
-    }
-    elsif ( $args{scope} ne 'worktree' && $args{scope} ne 'range' ) {
-        $error = '--scope must be worktree or range';
-    }
-    elsif ( $args{format} ne 'text' && $args{format} ne 'json' ) {
-        $error = '--format must be text or json';
-    }
-    elsif ( $args{scope} eq 'range' && ( !$args{base} || !$args{head} ) ) {
-        $error = '--scope range requires both --base and --head';
-    }
-    elsif ( $args{scope} eq 'worktree' && ( $args{base} || $args{head} ) ) {
-        $error = '--base and --head are only valid with --scope range';
-    }
+    my $error = argument_error( $parsed, \@arguments, \%args );
     if ( defined $error ) {
         usage( \*STDERR );
         print STDERR "validate-agent-knowledge.pl: error: $error\n";
