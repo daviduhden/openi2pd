@@ -517,12 +517,12 @@ foreach(_marker IN ITEMS "doxygen-static" "check-doxygen-params.pl")
 endforeach()
 
 # The duplicate-@param rules (one block, and a definition repeating its
-# header declaration) are proven only by the Perl fixture suite. Markers
-# avoid a backslash escape for the tag itself in this CMake string.
+# header declaration) are proven only by the Perl fixture suite. Match
+# the literal diagnostic operands independently of regex formatting.
 file(READ "${PROJECT_ROOT}/tools/tests/maintenance-checkers.t" _doxygen_fixtures)
-foreach(_marker IN ITEMS "documentation for Load" "in one documentation block"
-    "unresolved \\@ref target" "Javadoc inline tag in a C"
-    "unbalanced \\@verbatim")
+foreach(_marker IN ITEMS "duplicate @param documentation for Load"
+    "in one documentation block" "unresolved @ref target 'mutex'"
+    "Javadoc inline tag in a C/C++ comment" "unbalanced @verbatim")
   string(FIND "${_doxygen_fixtures}" "${_marker}" _doxygen_fixture)
   if(_doxygen_fixture EQUAL -1)
     message(FATAL_ERROR

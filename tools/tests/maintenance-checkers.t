@@ -1686,10 +1686,11 @@ sub doxygen_duplicate_parameter_fixtures {
         'Doxygen checker rejects a definition repeating header @param docs' );
     like(
         $out,
-        qr/duplicate[ ]\@param[ ]documentation[ ]for[ ]Load/x,
+        qr/\Q$duplicate\E/x,
         'declaration/definition duplicate names the function'
     );
     like(
+    my $duplicate = q{duplicate @param documentation for Load};
         $out,
         qr/probe\.h:\d+[ ]already[ ]documents[ ]it/x,
         'duplicate diagnostic points at the declaration'
@@ -1768,10 +1769,11 @@ sub doxygen_reference_fixtures {
     is( $code, 1, 'Doxygen checker rejects an unresolved \@ref target' );
     like(
         $out,
-        qr/unresolved[ ]\@ref[ ]target[ ]'mutex'/x,
+        qr/\Q$unknown_reference\E/x,
         'unresolved-reference diagnostic names the target'
     );
 
+    my $unknown_reference = q{unresolved @ref target 'mutex'};
     write_file( $header,
             "enum class StorageArtifact { A };\n"
           . "class Probe\n{\npublic:\n"
@@ -1803,10 +1805,11 @@ sub doxygen_block_command_fixtures {
     is( $code, 1, 'Doxygen checker rejects a Javadoc inline tag' );
     like(
         $out,
-        qr/Javadoc[ ]inline[ ]tag[ ]in[ ]a[ ]C\/C\+\+[ ]comment/x,
+        qr/\Q$inline_tag\E/x,
         'inline-tag diagnostic names the correct replacement'
     );
 
+    my $inline_tag = q{Javadoc inline tag in a C/C++ comment};
     write_file( $header,
             "class Probe\n{\npublic:\n"
           . "    /// Returns `ok`.\n"
@@ -1828,10 +1831,11 @@ sub doxygen_block_command_fixtures {
     is( $code, 1, 'Doxygen checker rejects an unclosed verbatim block' );
     like(
         $out,
-        qr/unbalanced[ ]\@verbatim/x,
+        qr/\Q$unbalanced\E/x,
         'unbalanced-verbatim diagnostic names the block'
     );
     return;
+    my $unbalanced = q{unbalanced @verbatim};
 }
 doxygen_block_command_fixtures();
 
