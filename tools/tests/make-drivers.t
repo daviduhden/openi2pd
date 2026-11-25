@@ -12,6 +12,7 @@ use 5.016;
 use strict;
 use warnings;
 use Cwd            qw(getcwd);
+use Carp           qw(croak);
 use Errno          qw(EINTR);
 use File::Basename qw(dirname);
 use File::Copy     qw(copy);
@@ -51,7 +52,7 @@ sub read_file {
 }
 
 my $fixture = "$root/tools/tests/fixtures/record-build-command.pl";
-die "missing regular mock fixture\n" unless -f $fixture && !-l $fixture;
+die "missing regular mock fixture\n" if !-f $fixture || -l $fixture;
 for my $name (qw(cmake ctest git dpkg-buildflags install cp)) {
     my $path = "$commands/$name";
     copy( $fixture, $path ) or die "copy recording fixture: $!\n";
@@ -63,12 +64,10 @@ for my $name (qw(cmake ctest git dpkg-buildflags install cp)) {
 sub invoke {
     my ( $script, $environment, @args ) = @_;
     write_file( $log, '' );
-    local %ENV = %ENV;
-    $ENV{PATH}     = "$commands:$ENV{PATH}";
-    $ENV{MOCK_LOG} = $log;
-    delete @ENV{
+    my %child_env = ( %ENV, PATH => "$commands:$ENV{PATH}", MOCK_LOG => $log );
+    delete @child_env{
         qw(MOCK_FAIL DEB_BUILD_OPTIONS CMAKE_BUILD_PARALLEL_LEVEL DESTDIR)};
-    @ENV{ keys %{$environment} } = values %{$environment};
+    local %ENV = ( %child_env, %{$environment} );
     my $previous = getcwd();
     chdir $workspace or die "chdir $workspace: $!\n";
     my ( $input, $output );
@@ -76,7 +75,7 @@ sub invoke {
       eval { open3( $input, $output, undef, 'sh', "$root/$script", @args ) };
     my $error = $@;
     chdir $previous or die "restore cwd: $!\n";
-    die $error unless $pid;
+    croak $error unless $pid;
     close $input;
     my $text = do { local $/ = undef; <$output> }
       // '';
@@ -90,7 +89,7 @@ sub invoke {
     }
     my $status = $?;
     my $code   = $status & 127 ? 128 + ( $status & 127 ) : $status >> 8;
-    my @calls  = map { JSON::PP->new->decode($_) } grep { length } split /\n/,
+    my @calls = map { JSON::PP->new->decode($_) } grep { length } split / \n /x,
       read_file($log);
     return ( $code, \@calls, $text );
 }
@@ -106,19 +105,19 @@ subtest 'declarative graph and original flag argv' => sub {
     my $makefile = read_file("$root/Makefile");
     like(
         $makefile,
-        qr/^build: configure$/m,
+        qr/^build:\ configure$/mx,
         'build still configures through its prerequisite'
     );
-    like( $makefile, qr/^install: build$/m, 'install still builds first' );
-    like( $makefile, qr/^check: test$/m,    'check remains the test alias' );
+    like( $makefile, qr/^install:\ build$/mx, 'install still builds first' );
+    like( $makefile, qr/^check:\ test$/mx,    'check remains the test alias' );
     like(
         $makefile,
-        qr/\$\{MAKE_DRIVER\} configure.*\$\{CMAKE_FLAGS\}\s*$/m,
+        qr/\$\{MAKE_DRIVER\}\ configure.*\$\{CMAKE_FLAGS\}\s*$/mx,
         'caller passes flags as original trailing argv'
     );
     unlike(
         $makefile,
-        qr/^\t.*\b(?:if|case|for|while)\b/m,
+        qr/^\t.*\b(?:if|case|for|while)\b/mx,
         'recipes contain no control flow'
     );
     my ( $code, $calls ) = root_driver(
@@ -290,7 +289,7 @@ subtest 'Debian flags and parallel count' => sub {
             'build' );
         is( $code, 0, "parallel option '$option' accepted" );
         my @expected = ( '--build', 'build-debian', '--parallel' );
-        push @expected, '4' if $option =~ /parallel=4/;
+        push @expected, '4' if $option =~ /parallel=4/x;
         is_deeply( $calls->[0]{args}, \@expected, 'parallel argv preserved' );
     }
     for my $invalid ( 'parallel=0', 'parallel=two', 'parallel=2 parallel=3' ) {

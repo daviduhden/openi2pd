@@ -24,7 +24,7 @@ my $json_line = JSON::PP->new->canonical->encode(
 ) . "\n";
 open my $log, '>>', $ENV{MOCK_LOG} or die "mock log: $!\n";
 print {$log} $json_line or die "mock log write: $!\n";
-close $log or die "mock log close: $!\n";
+close $log              or die "mock log close: $!\n";
 exit 23 if ( $ENV{MOCK_FAIL} // '' ) eq $name;
 
 if ( $name eq 'dpkg-buildflags' ) {
