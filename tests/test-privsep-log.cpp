@@ -69,7 +69,8 @@ bool WaitForExit (pid_t pid, int & status, int timeoutMs)
 	 * worker is a plain fork of the test process so the credential check
 	 * is exercised for the current uid (cross-uid rejection needs root).
 	 */
-template <typename Exchange> int RunScenario (Exchange exchange, int expectedExit)
+template <typename Exchange>
+void RunScenario (Exchange exchange, int expectedExit, [[maybe_unused]] bool postSandboxFd = false)
 {
 	auto pair = Channel::CreatePair ();
 	assert (pair.has_value ());
@@ -88,17 +89,18 @@ template <typename Exchange> int RunScenario (Exchange exchange, int expectedExi
 
 	int status = 0;
 	assert (WaitForExit (pid, status, 5000));
-	if (expectedExit == 0)
+	if (WIFEXITED (status))
 	{
-		assert (WIFEXITED (status));
-		assert (WEXITSTATUS (status) == 0);
-		return 0;
+		assert (WEXITSTATUS (status) == expectedExit);
+		return;
 	}
-	// A sandbox may terminate a forbidden operation with SIGSYS instead of
-	// letting the worker print a protocol error. Both are valid
-	// rejections.
-	assert (!WIFEXITED (status) || WEXITSTATUS (status) != 0);
-	return WIFEXITED (status) ? WEXITSTATUS (status) : 128 + WTERMSIG (status);
+	// OpenBSD can enforce the missing recvfd promise in the kernel.
+	// Only the case sending a descriptor after pledge admits this exit.
+#ifdef __OpenBSD__
+	assert (postSandboxFd && WIFSIGNALED (status) && WTERMSIG (status) == SIGABRT);
+#else
+	assert (false);
+#endif
 }
 
 std::string ReadFile (const std::string & path)
@@ -605,7 +607,7 @@ int main ()
 						.has_value ());
 				close (fd);
 			},
-			1);
+			1, true);
 		// The rejected record must not have been written.
 		assert (ReadFile (path).find ("fd on record") == std::string::npos);
 		unlink (path.c_str ());
