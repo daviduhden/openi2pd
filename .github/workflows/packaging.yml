@@ -410,6 +410,8 @@ jobs:
             fi
           )
           ls -l package-output
+      # Collect symbols separately from the packages used for install
+      # tests. The build outcome controls when both archives are required.
       - name: Stage Debian debug symbol archives
         if: always()
         env:

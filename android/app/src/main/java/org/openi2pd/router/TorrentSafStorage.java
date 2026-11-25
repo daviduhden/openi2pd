@@ -1290,9 +1290,8 @@ final class TorrentSafStorage {
             boolean ambiguous = cause instanceof android.os.RemoteException
                     || !session.remote.asBinder().isBinderAlive();
             if (ambiguous && recover)
-                // Death or an unmarshallable frame is the only
-                // ambiguity that justifies replacing the broker
-                // process.
+                // Retire this session on an ambiguous Binder failure.
+                // A replacement remains fenced until Binder death.
                 retire(session);
             return Outcome.of(fallback, ambiguous ? Failure.PROTOCOL : Failure.UNAVAILABLE);
         } catch (InterruptedException interrupted) {

@@ -30,6 +30,9 @@ if [ ! -d "$ref/.git" ]; then
 	exit 1
 fi
 
+# Use Git's original objects and avoid optional index writes. The
+# checkout is evidence for the reference revision and need not be
+# writable for this inspection.
 read_git() {
 	git --no-replace-objects --no-optional-locks -C "$ref" "$@"
 }

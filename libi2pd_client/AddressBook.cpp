@@ -254,12 +254,10 @@ namespace client
 
 	std::string NormalizeHostName (std::string_view name)
 	{
-		// A blinded destination label is URL-safe base64 and therefore
-		// case-sensitive. It is either the final label of ".i2p" (the Address
-		// parser treats a label longer than B33_ADDRESS_THRESHOLD this way)
-		// or the label immediately before an explicit ".b33.i2p" suffix.
-		// Preserve that label verbatim and fold the suffix and any subdomain
-		// prefix.
+		// Preserve candidate b33 text for the blinded-key parser, which
+		// folds case and checks canonical Base32 itself. A candidate is
+		// the label before an explicit b33 suffix or a final label above
+		// the length threshold. Fold the rest of the name here.
 		constexpr std::string_view b33Suffix = ".b33.i2p";
 		constexpr std::string_view b33AltSuffix = ".b33.i2p.alt";
 		bool explicitB33 = HasSuffixIgnoreCase (name, b33AltSuffix) && name.size () > b33AltSuffix.size ();
@@ -1388,12 +1386,9 @@ namespace client
 		{
 			// Java's LookupDestJob decodes a blinded destination in both
 			// spellings: an explicit ".b33.i2p" suffix and an implicit final
-			// label longer than B33_ADDRESS_THRESHOLD. The label is URL-safe
-			// base64, so it comes from the case-preserving normalisation above
-			// and is never looked up in the address book. A b33 name is also
-			// never resolved through the local "www." alias: the alias denotes
-			// an unblinded name, and a revoked or renamed b33 must not silently
-			// become another destination.
+			// label longer than B33_ADDRESS_THRESHOLD. Decode the final
+			// label directly. The address book and its local "www." alias
+			// apply only to unblinded names.
 			const std::string_view hostPart (normalized.data (), normalized.size () - 4);
 			// The explicit ".b33" marker is part of the suffix, not of the
 			// label: reading the final label without stripping it yields

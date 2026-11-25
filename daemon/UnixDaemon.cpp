@@ -625,9 +625,8 @@ namespace util
 
 #ifdef __OpenBSD__
 		// Spawn supervisor/log workers while the core is still unpledged.
-		// Pledge and unveil are cleared by execve; every worker installs its
-		// own policy after exec instead of inheriting one. No restricted
-		// process is allowed to create another after this point.
+		// Each worker installs its role policy after exec. The core
+		// closes the spawn path before applying its first pledge below.
 		if (!PreparePrivsepWorkers ()) return abortStart ();
 #if !defined(I2PD_NO_PRIVSEP) && !defined(NO_TORRENTS)
 		// The on-demand torrent-storage broker is disabled: it forked and

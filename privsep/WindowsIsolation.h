@@ -89,9 +89,10 @@ private:
 /*
  * Create (or derive) the profile for a role and return its SID and
  * capability set. Fails closed on an unsupported Windows build, a
- * missing capability SID or a profile/SID mismatch. A network role gets
- * `internetClient`; storage/log/ crypto/admin get no capability and
- * (for non-supervisor roles) a low-privilege AppContainer.
+ * missing capability SID or a profile/SID mismatch. The network role
+ * gets Internet and private-network capability SIDs. Storage, log,
+ * crypto and admin roles use low-privilege containers without network
+ * capability SIDs.
  */
 i2p::expected<WindowsAppContainer, std::string> CreateWindowsAppContainer (WindowsWorkerRole role);
 

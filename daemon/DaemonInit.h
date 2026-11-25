@@ -74,7 +74,7 @@ public:
 
 	~DaemonInitTransaction () { Rollback (); }
 
-	/* Record @a phase as acquired from this point on. */
+	/* Register @a phase for rollback before attempting acquisition. */
 	void Begin (DaemonInitPhase phase)
 	{
 		if (m_PhaseCount == m_Phases.size ()) throw std::length_error ("too many daemon initialization phases");

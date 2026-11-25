@@ -14,6 +14,10 @@
 
 namespace i2p::tui::detail
 {
+// Retry a nonblocking connect. Check the deadline before sleeping on
+// temporary socket states, and retry an interrupted call immediately.
+// Return zero on success or the error value without relying on errno
+// remaining unchanged after the helper returns.
 template <typename TimePoint, typename Now, typename Connect, typename Sleep>
 int RetryUnixConnectUntil (
 	TimePoint deadline, Now && now, Connect && connect, Sleep && sleep, std::chrono::milliseconds retryInterval)

@@ -110,15 +110,11 @@ namespace client
 		return ident.ToBase32 ().append (".b32.i2p");
 	}
 
-	// Host names in the address book are case-insensitive: Java lowercases
-	// the name in its naming service and before the ".b32.i2p" check.
-	// Returns an ASCII-lowercase copy suitable as a lookup/insertion key.
-	// The current administration listing returns that normalized key;
-	// diagnostics may keep the original spelling. Only 'A'-'Z' are folded
-	// so the result does not depend on the process locale, and a b33 label
-	// (URL-safe base64, case-sensitive) is preserved byte-for-byte.
+	/// Test a suffix using ASCII case folding.
 	bool HasSuffixIgnoreCase (std::string_view value, std::string_view suffix);
 	bool IsI2PHost (std::string_view host);
+	/// Fold ASCII host characters for address-book lookup and storage.
+	/// Preserve a candidate blinded destination label for the b33 parser.
 	std::string NormalizeHostName (std::string_view name);
 
 	// Local, bounded address-book administration. Names use the ASCII

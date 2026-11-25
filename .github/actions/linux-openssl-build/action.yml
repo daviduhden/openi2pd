@@ -129,6 +129,8 @@ runs:
           2>&1 | tee configure.log
         cmake --build build-output --parallel 2 2>&1 | tee build.log
 
+    # Independent groups need a successful build. The explicit outcome
+    # gate preserves their reports after a sibling test failure.
     - name: Run all CTest targets
       if: ${{ !cancelled() && steps.native_build.outcome == 'success' }}
       shell: bash

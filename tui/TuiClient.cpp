@@ -288,11 +288,9 @@ namespace tui
 		sockaddr_un address { };
 		address.sun_family = AF_UNIX;
 		std::memcpy (address.sun_path, m_Path.c_str (), m_Path.size () + 1);
-		// AF_UNIX completes or refuses a connect synchronously: with a full
-		// accept queue the kernel answers EAGAIN and the socket stays
-		// unconnected, so the attempt is repeated until the deadline. An
-		// asynchronous completion (EINPROGRESS/EALREADY) is treated the same
-		// way; it cannot hang here because every pass is bounded.
+		// A full AF_UNIX accept queue can return EAGAIN on this
+		// nonblocking socket. Retry that and in-progress states with
+		// a delay while the caller's time budget allows.
 		const auto deadline = std::chrono::steady_clock::now () + CONNECT_TIMEOUT;
 		const int connectError = detail::RetryUnixConnectUntil (
 			deadline, [] { return std::chrono::steady_clock::now (); },

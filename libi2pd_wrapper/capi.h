@@ -4,8 +4,8 @@
  *
  * openi2pd: capi.
  *
- * C entry points expose lifecycle and peer tests after UPnP.
- * They serve cgo, SWIG and other non-C++ callers.
+ * C entry points expose the embedded router lifecycle and a transport
+ * peer test to cgo, SWIG and other non-C++ callers.
  *
  */
 
@@ -17,14 +17,15 @@ extern "C"
 {
 #endif
 
-	// initialization start and stop
+	// The embedding process controls one router lifecycle. Initialize
+	// before starting, and stop the router before releasing crypto.
 	void C_InitI2P (int argc, char * argv[], const char * appName);
-	//void C_InitI2P (int argc, char** argv, const char * appName);
 	void C_TerminateI2P ();
+	// The wrapper selects the application log file in the data directory.
 	void C_StartI2P ();
-	// Writes the system log to logStream, or <appName>.log by default.
 	void C_StopI2P ();
-	void C_RunPeerTest (); // should be called after UPnP
+	// Request a transport peer test after startup and any UPnP setup.
+	void C_RunPeerTest ();
 
 #ifdef __cplusplus
 }

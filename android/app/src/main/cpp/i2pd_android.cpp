@@ -318,10 +318,8 @@ inline jstring NewStringChecked (JNIEnv * env, std::string_view value) noexcept
 		}
 
 		if (utf16.size () > static_cast<size_t> (std::numeric_limits<jsize>::max ())) return nullptr;
-		// A zero-length NewString must never receive a null jchar pointer:
-		// the JNI specification only allows a null pointer for a zero length
-		// on some VMs and CheckJNI aborts on it. A stable static element
-		// makes the empty case explicit instead of relying on that ambiguity.
+		// Keep the pointer non-null for CheckJNI even when the UTF-16
+		// length is zero and the vector has no backing allocation.
 		static constexpr jchar kEmptyUtf16 = 0;
 		jstring result
 			= env->NewString (utf16.empty () ? &kEmptyUtf16 : utf16.data (), static_cast<jsize> (utf16.size ()));

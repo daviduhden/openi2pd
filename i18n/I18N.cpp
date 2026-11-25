@@ -39,6 +39,8 @@ namespace i18n
 		// Readers retain the complete immutable selection through lookup.
 		// A concurrent language switch cannot destroy their plural table.
 		i2p::util::AtomicSharedPtr<const Selection> g_Selection;
+		// Message selection and numeric formatting are independent.
+		// Pin the process numeric locale on the first selection.
 		std::once_flag g_NumericLocale;
 
 		std::string Normalize (std::string_view tag)

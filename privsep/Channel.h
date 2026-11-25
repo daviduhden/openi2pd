@@ -184,9 +184,9 @@ public:
 	 * from the first instead of duplicating them. Send is atomic per
 	 * record, but callers that require ordering must serialize their
 	 * writers as well.
-	 * The receive is bounded by @a timeoutMs. A ready record can still be
-	 * taken by another reader between poll() and recvmsg(); the resulting
-	 * EAGAIN is retried until the absolute deadline rather than blocking.
+	 * The receive is bounded by @a timeoutMs. Readiness is advisory:
+	 * if recvmsg() returns EAGAIN after poll(), the receive retries
+	 * within the original deadline.
 	 * Recoverable refusal writes share that same remaining budget; they
 	 * cannot extend a finite receive deadline with a new send timeout.
 	 * A negative timeout keeps the historical infinite-wait meaning. A

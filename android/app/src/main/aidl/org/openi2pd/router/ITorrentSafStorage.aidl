@@ -25,10 +25,10 @@
 //
 // Deadlines
 // ---------
-// Every data transaction is cancellable. The broker cancels the
-// provider call at 15 s and retires its own process at 30 s only when
-// the same operation is still registered, so one slow provider read
-// cannot drop every torrent handle.
+// The watchdog starts when an admitted operation acquires the provider
+// lock. After 15 s it requests cancellation. After 30 s it retires
+// the broker if that operation is still registered, invalidating all
+// handles in that broker generation.
 //
 // No descriptor is ever exported: ParcelFileDescriptor stays
 // broker-internal.
@@ -62,7 +62,7 @@ interface ITorrentSafStorage {
     // and 0 is returned. Once admitted, a presented token is consumed
     // even when the descriptor open fails, so one capability can never
     // truncate twice; a refused admission leaves it live. Bounds: 4096
-    // open handles, one admission slot. Returns a non-zero non-export
+    // open handles, one admission slot. Returns a non-zero export
     // handle for write()/finishExport()/closeFile().
     long openExport(long token, long operation);
 

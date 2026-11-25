@@ -18,6 +18,8 @@ use File::Spec;
 use FindBin qw($Bin);
 use Test::More;
 
+# Classify only in the code state. The scanner owns offset and line
+# advancement, including lines skipped inside a raw string.
 sub code_token {
     my ( $source, $offset ) = @_;
     my $pair = substr( $source, $offset, 2 );

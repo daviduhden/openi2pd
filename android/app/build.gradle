@@ -40,10 +40,9 @@ dependencies {
     implementation 'androidx.recyclerview:recyclerview:1.4.0'
     implementation 'com.google.android.material:material:1.14.0'
 
-    // Prepared tests. They are not wired into a build type and do not
-    // run automatically; run them explicitly with
-    // :i2pd:testDebugUnitTest or :i2pd:connectedDebugAndroidTest when
-    // an emulator/device is available.
+    // Manual Android CI runs :i2pd:testDebugUnitTest on the host JDK.
+    // The opt-in UI job runs :i2pd:connectedDebugAndroidTest on its
+    // emulator, where Android services and JNI are available.
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test:core:1.7.0'
     androidTestImplementation 'androidx.test:runner:1.7.0'
@@ -81,7 +80,7 @@ android {
         versionCode 2610000
         versionName "2.61.0"
 
-        // Instrumentation tests are prepared but only run when invoked.
+        // Entry point for the device-side instrumentation suite.
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
         ndk {

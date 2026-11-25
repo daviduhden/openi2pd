@@ -54,10 +54,9 @@ const char * LevelName (LogLevel level) noexcept
 	return "log";
 }
 
-// Writes one record to stderr. The text is the logger's sanitized
-// copy: it is already capped at LOG_RECENT_TEXT_LIMIT bytes and has
-// C0 controls (except TAB) flattened, so a test cannot inject escape
-// sequences into the CI log through a product message.
+// Writes one record to stderr. The logger bounds this copy to
+// LOG_RECENT_TEXT_LIMIT bytes and replaces C0 controls except TAB.
+// This sink relies on producers to keep secrets out of log records.
 void Echo (LogLevel level, std::time_t, std::string_view text) noexcept
 {
 	try

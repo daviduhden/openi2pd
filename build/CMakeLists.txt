@@ -88,6 +88,8 @@ option(WITH_HARDENING       "Use hardening compiler flags"                 OFF)
 option(I2PD_WARNINGS_AS_ERRORS "Treat project target warnings as errors"    OFF)
 option(WITH_LIBRARY         "Install libraries and headers"                ON)
 option(WITH_BINARY          "Build the router executable"                  ON)
+# WITH_LIBRARY controls the install surface. The native archives also
+# serve as link inputs for in-tree executables and JNI.
 option(I2PD_BUILD_TUI       "Build the TUI (ncursesw on Unix, Win32 on Windows)" ON)
 option(I2PD_TUI_REQUIRED    "Fail configuration when the Unix TUI dependency is missing" ON)
 option(I2PD_BUILD_TOOLS     "Build i2pd auxiliary tools"                   ON)
@@ -976,12 +978,10 @@ i2pd_enable_sanitizers(libi2pdlang)
 target_link_libraries(libi2pdclient PUBLIC libi2pdlang)
 
 if(I2PD_BUILD_JNI AND ANDROID)
-  # The JNI library owns the in-process daemon. Daemon.cpp is the common
-  # daemon lifecycle implementation used by DaemonAndroid; UPnP.cpp and
-  # the local TUI/I2PControl services are linked here as well. Android
-  # deliberately does not use the privilege-separated log supervisor, so
-  # I2PD_NO_PRIVSEP removes that POSIX-only path while leaving the rest
-  # of the daemon intact.
+  # JNI embeds the common daemon lifecycle, I2PControl, UPnP and
+  # shared TUI dispatch. The native TUI listeners and CLI entry point
+  # are desktop targets. I2PD_NO_PRIVSEP excludes the native process
+  # supervisor from this Android entry point.
   add_library(i2pd_jni SHARED
     "${PROJECT_ROOT}/android/app/src/main/cpp/DaemonAndroid.cpp"
     "${PROJECT_ROOT}/android/app/src/main/cpp/i2pd_android.cpp"

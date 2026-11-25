@@ -4,13 +4,6 @@
  *
  * openi2pd: RouterRepository.
  *
- * Main-thread bridge between {@link RouterViewModel} and {@link
- * RouterService}: it binds with the application context, exposes
- * immutable LiveData snapshots and logs, and forwards commands as
- * explicit service intents rather than direct native calls. Listener
- * registration follows UI visibility so polling stops in the
- * background, and closing the repository releases the binding.
- *
  */
 
 package org.openi2pd.router;
@@ -35,18 +28,14 @@ import java.util.Locale;
 /**
  * Presentation-facing bridge to {@link RouterService}.
  *
- * <p>Binds with the application context, exposes immutable LiveData and
- * forwards commands through the in-process binder. It never touches
- * {@link DaemonWrapper} or {@link I2PD_JNI}. A ViewModel owns one
- * instance, so an Activity recreation keeps the binding and the daemon
- * without restarting anything.</p>
+ * <p>The ViewModel owns the application-context binding across
+ * Activity recreation. This repository exposes snapshots and logs
+ * through LiveData. Closing it releases observation and the binding;
+ * the started service owns the daemon lifecycle.</p>
  *
  * <p>Commands that must create/maintain the started foreground service
- * are delivered as explicit service intents (the same paths the Quick
- * Settings tile and boot receiver use). Observation uses the binder.
- * When a future isolated-process AIDL service replaces the local
- * binder, this class is the only UI-facing piece that needs a transport
- * change.</p>
+ * are delivered as explicit service intents. Observation and commands
+ * directed to the bound service use the local binder.</p>
  */
 public final class RouterRepository implements RouterService.Listener {
     private static final String TAG = "RouterRepository";
@@ -65,8 +54,7 @@ public final class RouterRepository implements RouterService.Listener {
     private boolean bound;
     private boolean closed;
     /*
-     * UI visibility gates the service listener so polling stops in
-     * background.
+     * Listener registration follows UI visibility on the main thread.
      */
     private boolean uiVisible;
     private boolean listening;
@@ -139,10 +127,8 @@ public final class RouterRepository implements RouterService.Listener {
     }
 
     /*
-     * Start or stop observation of the bound service. Keeping the
-     * binding while the UI is not visible lets commands still use the
-     * binder, but stops the service's JNI polling and the fragment
-     * render pipeline in background.
+     * Keep the binding available for commands while the UI is hidden.
+     * Removing the last listener stops periodic status and log polling.
      */
     public void setUiVisible(boolean visible) {
         runOnMain(() -> {

@@ -23,14 +23,10 @@ constexpr bool UsesTransientTunnelKeys (std::string_view name) noexcept
 	return name.starts_with ("transient");
 }
 
-/*
-	 * Reuse file-backed identities within one configuration reload.
-	 *
-	 * This cache owns retained destinations and is confined to the reload
-	 * thread. Transient requests always miss and are never retained: two
-	 * sections using the same marker must still receive separate keys.
-	 * Returned pointers retain their owner after the cache is destroyed.
-	 */
+/// Reuse file-backed identities within one configuration reload.
+/// The reload thread owns the cache. A returned shared pointer keeps
+/// the destination alive after the reload. Transient requests always
+/// miss so separate sections receive separate keys.
 template <typename Destination> class TunnelDestinationCache
 {
 public:

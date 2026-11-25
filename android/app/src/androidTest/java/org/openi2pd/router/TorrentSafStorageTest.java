@@ -32,6 +32,8 @@ public final class TorrentSafStorageTest {
             }
         }));
         try {
+            // Hold the first grant mutation across retirement so the
+            // next admitted operation must drain the deferred release.
             assertTrue(entered.await(5, java.util.concurrent.TimeUnit.SECONDS));
             assertTrue(leases.retire(token));
             assertFalse(authority.run(() -> failUnexpectedGrantMutation()));

@@ -4,8 +4,8 @@
  *
  * openi2pd: crypto.
  *
- * RAII around the libi2pd crypto lifetime used by native tools. Every
- * early return now terminates the crypto state instead of leaking it.
+ * Owns one native tool's libi2pd crypto lifetime. Declare the guard
+ * before constructing objects that depend on initialized crypto.
  */
 
 #ifndef I2PD_TOOLS_COMMON_CRYPTO_HPP

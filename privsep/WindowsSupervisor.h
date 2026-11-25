@@ -381,7 +381,11 @@ public:
 	 */
 	bool PumpOnce (uint32_t maxWaitMs);
 
-	/* Authenticated channel of the current generation, or nullptr. */
+	/*
+	 * Borrow the current authenticated channel, or nullptr. Use it
+	 * only while the generation is held stable by the caller: pumping
+	 * or stopping the supervisor can destroy the channel.
+	 */
 	WindowsChannel * Channel () { return m_Channel ? &*m_Channel : nullptr; }
 	const WindowsChannel * Channel () const { return m_Channel ? &*m_Channel : nullptr; }
 

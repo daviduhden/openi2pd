@@ -106,6 +106,9 @@ namespace data
 		int m_NumAttempts;
 	};
 
+	/// Runs router lookups and exploratory requests on a dedicated
+	/// executor. Submission, search replies and completion notifications
+	/// are queued there so request state is managed in one place.
 	class NetDbRequests : public std::enable_shared_from_this<NetDbRequests>, private i2p::util::RunnableServiceWithWork
 	{
 	public:

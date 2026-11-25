@@ -220,11 +220,9 @@ struct OpenBSDPledgeWindow
 /*
  * The fixed promise list for one phase, in canonical order.
  *
- * The runtime list is always a subset of the startup list: pledge(2)
- * can only remove promises, so a runtime-only promise is silently
- * ignored by the kernel and the first use of that subsystem aborts the
- * core. `IsPledgePromiseSubset` pins the relationship and both call
- * sites use these builders.
+ * Pledge can only remove promises. The daemon uses
+ * `IsPledgePromiseSubset` to reject a configuration that would add
+ * a promise during the transition to the runtime list.
  */
 std::vector<std::string> OpenBSDPledgePromiseList (OpenBSDPledgePhase phase, const OpenBSDPledgeWindow & window);
 /*

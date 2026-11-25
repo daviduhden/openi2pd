@@ -673,13 +673,13 @@ namespace torrents
 		/// A subsequent Start() retains this diagnostic.
 		boost::system::error_code GetTimerCancellationError () const;
 
-		// Both are always in 1..65535: 65535 is refused at construction and
-		// on state load so the raw repliable port can never wrap to 0.
+		// Reserve the adjacent port for raw replies. The DHT request
+		// port stays below 65535 so this addition cannot wrap.
 		uint16_t GetPort () const { return m_Port; };
 		uint16_t GetRPort () const { return static_cast<uint16_t> (m_Port + 1); };
-		// Service-thread entry point for raw (sender-less) KRPC frames. The
-		// caller is the torrent tunnel's raw receiver, which owns sender
-		// attribution; this method only bounds and decodes what it is given.
+		/// Parse a raw KRPC frame on the tunnel service thread.
+		/// The receive port selects this path. Raw frames carry no
+		/// authenticated sender and share one admission budget.
 		void HandleRawDatagram (const uint8_t * buf, size_t len, uint16_t fromPort, uint16_t toPort);
 
 		void SendPingQuery (const i2p::data::IdentHash & toIdent, uint16_t toPort);

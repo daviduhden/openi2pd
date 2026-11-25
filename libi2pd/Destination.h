@@ -233,16 +233,15 @@ namespace client
 
 		std::shared_ptr<i2p::tunnel::TunnelPool> GetTunnelPool () { return m_Pool; };
 		bool IsReady () const { return m_LeaseSet && !m_LeaseSet->IsExpired () && m_Pool->HasOutboundTunnels (); };
-		/// Cache-only lookup for a remote destination. An entry that is still
-		/// valid is returned, and one that expires soon also triggers a
-		/// background refresh so the caller keeps a usable LeaseSet; an
-		/// expired entry is removed and null is returned. A miss returns null
-		/// without starting a lookup, so callers that need the LeaseSet must
-		/// use RequestDestination().
+		/// Return a usable LeaseSet from the remote cache. An entry that is
+		/// still valid can be used while a near-expiry refresh runs. An
+		/// expired entry is removed. On a miss, call RequestDestination()
+		/// to start a lookup.
 		std::shared_ptr<i2p::data::LeaseSet> FindLeaseSet (const i2p::data::IdentHash & ident);
-		/// Post a LeaseSet lookup; the completion receives null on failure.
-		/// @return False when the pool is unavailable or not ready, in which
-		/// case a supplied completion is still posted with null.
+		/// Post a LeaseSet lookup to the destination executor. A supplied
+		/// completion receives null on failure.
+		/// @return True if the lookup was posted. If the pool is unavailable
+		/// or not ready, return false and post a null completion instead.
 		bool RequestDestination (const i2p::data::IdentHash & dest, RequestComplete requestComplete = nullptr);
 		/// Request a blinded LeaseSet; a supplied client-auth secret is
 		/// copied only when its length is exactly 32 bytes, otherwise it is

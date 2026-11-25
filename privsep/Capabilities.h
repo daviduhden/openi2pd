@@ -4,13 +4,12 @@
  *
  * openi2pd: Capabilities.
  *
- * Declares the capability model for every openi2pd process role and the
- * single invariant that no role may combine external network access
- * with persistent writes. This header is deliberately platform-free: it
- * is the declaration and the compile-time contract, not the
- * enforcement. Enforcement lives in the per-platform sandbox
- * (Landlock/seccomp, pledge/unveil, Windows tokens) and a backend must
- * never grant more than the mask declared here.
+ * The target role matrix prohibits combining external network access
+ * with persistent writes. The legacy core row records where the
+ * migration still leaves both capabilities in one process.
+ *
+ * This platform-free contract describes authority. The OS backends
+ * enforce it with Landlock/seccomp, pledge/unveil or Windows tokens.
  */
 
 #ifndef I2PD_PRIVSEP_CAPABILITIES_H__
@@ -255,10 +254,10 @@ constexpr std::optional<CapabilityMask> LegacyMask (ProcessRole role)
 }
 
 /*
- * The invariant: external network access and durable writes never
- * coexist in one process. A process that can both reach the network and
- * rewrite durable state can exfiltrate or corrupt that state without
- * crossing another boundary.
+ * The target invariant keeps external network access and durable
+ * writes in separate roles. Combining them lets a compromised process
+ * alter durable state and transmit it without crossing another
+ * boundary.
  */
 constexpr bool SatisfiesCapabilityInvariant (CapabilityMask mask)
 {

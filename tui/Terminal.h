@@ -117,11 +117,10 @@ namespace tui
 		 *
 		 * Init is idempotent and owns the process-wide console state: on
 		 * POSIX the ncursesw screen and keypad mode, on Windows the saved
-		 * console modes and the alternate screen.  The locale must already
-		 * provide a multibyte LC_CTYPE, because Put decodes UTF-8 to measure
-		 * columns.  Shutdown is the only operation that restores that state
-		 * and must run on every exit path, including an error path after a
-		 * partially successful Init.
+		 * console modes and the alternate screen. Set a UTF-8 LC_CTYPE
+		 * before POSIX initialization so rendering and width measurement
+		 * agree. Call Shutdown on every exit path to restore terminal
+		 * state, including after a partially successful Init.
 		 */
 		bool Init ();
 		void Shutdown ();
@@ -131,18 +130,15 @@ namespace tui
 		void Clear ();
 		void Move (int row, int column);
 		/*
-		 * Write text at the cursor.  `limit` is a terminal-column budget, not
-		 * a byte count: the text is decoded so a wide CJK glyph counts as two
-		 * cells and a combining mark as zero, and a sequence is never split.
-		 * A negative limit means "whole string".  Bytes that the locale
-		 * cannot decode are consumed one at a time so the cursor still
-		 * advances, instead of letting ncursesw swallow the rest of the row.
+		 * Write text at the cursor within `limit` terminal columns. A
+		 * wide CJK glyph can use two columns and a combining mark can
+		 * use none. Each decoded character is included or omitted whole.
+		 * A negative limit disables this per-call budget.
 		 *
-		 * Input must already be sanitized (SanitizeText turns tabs and line
-		 * breaks into spaces). A control character that wcwidth() reports as
-		 * -1 is charged one column here although a terminal may advance a tab
-		 * to the next tab stop, so the backend does not expand tabs itself
-		 * and a caller that bypasses sanitizing can drift the column budget.
+		 * Sanitize input before rendering. On POSIX, a tab can advance
+		 * to a tab stop even though the width calculation charges one
+		 * column. On Windows, the cell renderer replaces control
+		 * characters before writing to the console.
 		 */
 		void Put (std::string_view text, int limit = -1);
 		void ClearToEol ();

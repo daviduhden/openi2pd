@@ -88,6 +88,10 @@ branding validators or a build.
 
 - Coordinate source comments and optional API documentation with the owning
   subsystem under the [source documentation policy](../../../AGENTS.md#source-documentation-policy).
+- Trace the caller and enforcing owner before documenting an API. Check
+  encoded alphabet and case folding separately from accepted spelling.
+  Distinguish an export or capability probe from actual enforcement, and
+  a borrowed handle from a generation-independent ownership transfer.
 - Inspect the implementation before writing source comments. Prefer concise
   technical American English and ASCII; keep comment lines within 72 columns
   unless the source format or documentation tool requires otherwise. Review

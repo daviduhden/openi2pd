@@ -52,6 +52,19 @@ constraint. Explain verified intent and contracts, not the next statement.
 Inspect behavior before adding prose. Remove or correct comments that are
 stale, ambiguous, duplicated or contradicted by the implementation.
 
+## Trace contracts across components
+
+- Follow a native request from its caller to the executor that owns its
+  registry. A cache may be read under a mutex while refresh and timeout work
+  belongs to an executor. Describe these responsibilities separately.
+- For platform bridges, trace both ownership and authority. A borrowed
+  Windows handle expires with its worker generation. Android SAF can cancel
+  one admitted operation or retire the whole broker generation. Those
+  operations have different consequences for outstanding handles.
+- For build and CI comments, trace the condition that enables each phase
+  and its artifact. A linked dispatcher does not imply a listener, and a
+  test report can be available after a separate test phase fails.
+
 ## C++23
 
 Use Doxygen for public headers and non-obvious implementation helpers:

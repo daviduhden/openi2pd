@@ -72,10 +72,10 @@ namespace util
 		bool IsService () const;
 
 		/*
-		 * Spawn privilege-separated workers before the parent runtime sandbox
-		 * is installed. On OpenBSD fork/exec must happen while the startup
-		 * pledge still contains proc/exec; the runtime policy then drops
-		 * both.
+		 * Prepare workers before the parent installs its runtime sandbox.
+		 * OpenBSD starts them before the first pledge. Each worker applies
+		 * its own policy after exec; the core cannot spawn replacements
+		 * after the process-creation barrier.
 		 */
 		bool PreparePrivsepWorkers ();
 		/* Revoke installed storage callbacks and reap prepared workers

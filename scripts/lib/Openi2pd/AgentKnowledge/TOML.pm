@@ -9,8 +9,9 @@ use 5.016;
 use strict;
 use warnings;
 
-# Keep types explicit: a quoted integer is not an integer setting, and
-# a TOML boolean is not Perl's numeric scalar. No config value is eval'd.
+# Return typed nodes for validator schema checks. Quoted integers and
+# TOML booleans retain their own types, and values are parsed as data.
+# Table headers select the scope for the key assignments that follow.
 sub parse {
     my ( $class, $text ) = @_;
     $text =~ s/\r\n/\n/gx;

@@ -18,6 +18,8 @@ if(WITH_ADDRSANITIZER OR WITH_THREADSANITIZER OR WITH_UNDEFSANITIZER)
   set(I2PD_TEST_TIMEOUT 300)
 endif()
 
+# Keep assertions enabled on the test executable even in Release.
+# The linked production archives retain their own build flags.
 function(i2pd_add_test name)
   add_executable(${name} "${name}.cpp")
   # Every C++ test echoes the product's own diagnostics to stderr as

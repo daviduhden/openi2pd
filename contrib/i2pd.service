@@ -5,8 +5,8 @@
 #
 # Native systemd unit that runs i2pd in the foreground as the i2pd user
 # with packaged configuration, tunnel directory and runtime/data paths.
-# Logging goes to the journal; the daemon never forks and no readiness
-# protocol is used.
+# Logging goes to the journal. The router stays in the foreground, and
+# systemd tracks its main process without a readiness notification.
 #
 
 [Unit]
@@ -47,24 +47,19 @@ ExecReload=/bin/kill -HUP $MAINPID
 # SIGINT performs the slower graceful shutdown: the router stops
 # accepting new transit tunnels and gives them up to ten minutes (600 s)
 # to expire, then runs its ordered stop (flush state, stop the IPC
-# workers). SIGKILL is only a last resort inside the 60-second shutdown
-# margin.
+# workers). The stop budget allows 60 seconds for that final cleanup.
 #
 # KillMode=mixed sends the stop signal to the main process only and
-# SIGKILL to the whole cgroup at the deadline. That is the required
-# split:
-# signalling the workers directly would terminate a storage worker in
-# the middle of a write while the router still believes it owns the
-# operation. The main process owns worker shutdown; do not widen the
-# stop signal to the whole cgroup.
+# SIGKILL to the whole cgroup at the deadline. Sending SIGINT directly
+# to a worker could interrupt a write that the router still owns.
 KillSignal=SIGINT
 KillMode=mixed
 TimeoutStopSec=660
 SendSIGKILL=yes
 # A graceful ordered stop exits 0, so on-failure restarts a crash or a
 # failed start but not an operator stop. Restart/upgrade reuse
-# KillSignal and TimeoutStopSec below, so a `systemctl restart` and a
-# package upgrade wait for the same drain;
+# KillSignal and TimeoutStopSec, so a `systemctl restart` and a
+# package upgrade wait for the same drain.
 # StartLimitIntervalSec/StartLimitBurst in [Unit] bound the retry rate.
 Restart=on-failure
 RestartSec=5s

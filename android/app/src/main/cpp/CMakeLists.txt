@@ -14,10 +14,10 @@
 cmake_minimum_required(VERSION 3.24)
 project(OpenI2PdAndroid LANGUAGES C CXX)
 
-# Android intentionally builds only the in-process JNI library.
-# i2pd_privsep is not linked here: the current Android service is
-# same-process and the network/storage/crypto workers do not yet exist.
-# Do not describe this as OS process separation.
+# The router service loads the JNI library in the app process. The SAF
+# broker loads the same library in a separate process under the app
+# UID. Android uses Binder for that broker and excludes the native
+# i2pd_privsep target.
 set(I2PD_BUILD_JNI ON CACHE BOOL "" FORCE)
 set(WITH_BINARY OFF CACHE BOOL "" FORCE)
 set(WITH_LIBRARY OFF CACHE BOOL "" FORCE)

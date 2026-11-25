@@ -65,12 +65,10 @@ Defines native Android application resources.
                 android:value="true" />
         </service>
 
-        <!-- Same-process, non-exported router owner. The foreground
-            notification and the graceful-stop deadline live here, not
-            in an Activity, and task removal does not stop it. A future
-            isolated-process design would add a separate process plus an
-            AIDL IRouterControl interface; the local binder must never
-            be exported. -->
+        <!-- The service owns the router in the app process. Its
+            foreground notification and graceful-stop deadline survive
+            Activity recreation. Task removal leaves the service
+            running, and the local binder stays private to the app. -->
         <service
             android:name=".RouterService"
             android:enabled="true"

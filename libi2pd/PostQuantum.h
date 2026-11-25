@@ -67,12 +67,10 @@ namespace crypto
 		return std::get<2> (MLKEMS[type - i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD - 1]);
 	}
 
-	// Runtime availability of the parameter set in the active crypto
-	// provider. The first call for each type performs a bounded probe (key
-	// generation with no caller-visible key material) and caches the
-	// result, so callers can gate publication and selection on what the
-	// provider can actually create. Unknown types and providers without
-	// the API report false.
+	/// Probe the active crypto backend once per parameter set. The probe
+	/// checks wire sizes and an encapsulation/decapsulation round trip.
+	/// The cached result gates advertisement and session selection.
+	/// Unknown and unsupported types return false.
 	bool IsMLKEMSupported (i2p::data::CryptoKeyType type);
 
 	// True only when the active provider can perform the ML-KEM parameter
@@ -86,10 +84,9 @@ namespace crypto
 	// works.
 	int HighestSupportedPQVersion (int requested, int maximum);
 
-	/// Owning ML-KEM key pair for one parameter set. Non-copyable because
-	/// it holds provider key material; the destructor frees it. A key is
-	/// only usable after GenerateKeys() or SetPublicKey() succeeded, and
-	/// private material is never logged or serialized here.
+	/// Owns backend key material for one ML-KEM parameter set.
+	/// Successful key generation enables both operations. A successfully
+	/// imported public key supports encapsulation only.
 	class MLKEMKeys
 	{
 	public:
@@ -108,6 +105,9 @@ namespace crypto
 		size_t GetKeyLen () const { return m_KeyLen; };
 		size_t GetCTLen () const { return m_CTLen; };
 		[[nodiscard]] bool Encaps (uint8_t * ciphertext, uint8_t * shared);
+		/// Produce the candidate shared secret for the Noise handshake.
+		/// Success can include implicit rejection. The subsequent AEAD
+		/// authentication still has to succeed.
 		[[nodiscard]] bool Decaps (const uint8_t * ciphertext, uint8_t * shared);
 
 	private:
