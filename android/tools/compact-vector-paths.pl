@@ -169,27 +169,32 @@ for my $name (
     push @outputs, [ $path, $text, $updated ];
 }
 
+sub replace_vector {
+    my ( $path, $updated ) = @_;
+    -l $path and die "refusing a symlink vector destination\n";
+    my @metadata = stat $path;
+    @metadata or die "cannot inspect vector mode\n";
+    my ( $fh, $temporary ) = tempfile(
+        '.vector-XXXXXX',
+        DIR => File::Spec->catdir(
+            $root, 'android', 'app', 'src', 'main', 'res', 'drawable'
+        ),
+        UNLINK => 1
+    );
+    print {$fh} $updated or die "cannot write compact vector\n";
+    close $fh            or die "cannot close compact vector\n";
+    chmod( $metadata[2] & oct('7777'), $temporary )
+      or die "cannot preserve vector mode\n";
+    rename $temporary, $path or die "cannot replace compact vector\n";
+    return;
+}
+
 # Validate every template before any output is replaced.
 for my $output (@outputs) {
     my ( $path, $text, $updated ) = @{$output};
-    if ( $write && $updated ne $text ) {
-        -l $path and die "refusing a symlink vector destination\n";
-        my ( $fh, $temporary ) = tempfile(
-            '.vector-XXXXXX',
-            DIR => File::Spec->catdir(
-                $root, 'android', 'app', 'src', 'main', 'res', 'drawable'
-            ),
-            UNLINK => 1
-        );
-        print {$fh} $updated or die "cannot write compact vector\n";
-        close $fh            or die "cannot close compact vector\n";
-        chmod( ( stat $path )[2] & oct('7777'), $temporary )
-          or die "cannot preserve vector mode\n";
-        rename $temporary, $path or die "cannot replace compact vector\n";
-    }
-    elsif ( $updated ne $text ) {
-        die "Android vector literals need --write regeneration\n";
-    }
+    next if $updated eq $text;
+    die "Android vector literals need --write regeneration\n" unless $write;
+    replace_vector( $path, $updated );
 }
 print "Android vector literals preserve canonical geometry below Lint bound\n";
 
