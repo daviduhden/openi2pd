@@ -46,6 +46,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.After;
 import org.junit.Assume;
@@ -110,11 +111,14 @@ public final class TorrentSafBrokerContractTest {
      */
     private void bind() throws InterruptedException, RemoteException {
         final CountDownLatch connected = new CountDownLatch(1);
+        final long deadline = SystemClock.elapsedRealtime() + BIND_TIMEOUT_MS;
+        final AtomicLong callbackTime = new AtomicLong();
         final AtomicReference<IBinder> result = new AtomicReference<>();
         ServiceConnection fresh = new ServiceConnection() {
             @Override
             public void onServiceConnected(ComponentName name, IBinder service) {
                 result.set(service);
+                callbackTime.set(SystemClock.elapsedRealtime());
                 connected.countDown();
             }
             @Override
@@ -122,6 +126,7 @@ public final class TorrentSafBrokerContractTest {
             }
             @Override
             public void onNullBinding(ComponentName name) {
+                callbackTime.set(SystemClock.elapsedRealtime());
                 connected.countDown();
             }
         };
@@ -137,7 +142,8 @@ public final class TorrentSafBrokerContractTest {
         Assume.assumeTrue("SAF broker service is not declared in this build", requested);
         connection = fresh;
         assertTrue("Broker did not connect within the budget",
-                connected.await(BIND_TIMEOUT_MS, TimeUnit.MILLISECONDS));
+                connected.await(Math.max(0L, deadline - SystemClock.elapsedRealtime()),
+                        TimeUnit.MILLISECONDS) && callbackTime.get() <= deadline);
         binder = result.get();
         // The broker stops itself when the native sandbox restriction
         // is unavailable, which is a device capability issue, not a
@@ -246,13 +252,7 @@ public final class TorrentSafBrokerContractTest {
         control(generation).retire(generation);
         assertTrue("Broker ignored its own retirement", awaitDeath(RETIRE_TIMEOUT_MS));
         tearDown();
-        long start = SystemClock.elapsedRealtime();
         bind();
-        // The client bounds the retiring state at 5 s per check; a cold
-        // broker process start on a slow device still has to fit the
-        // bind budget.
-        assertTrue("Rebind exceeded the bind budget",
-                SystemClock.elapsedRealtime() - start <= BIND_TIMEOUT_MS);
         long replacement = broker.handshake();
         assertTrue(replacement > 0);
         assertNotEquals("A replacement broker must not reuse the fenced generation", generation,
