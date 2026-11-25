@@ -13,6 +13,6 @@ use warnings;
 
 # Flush valid output before optional signal death. A caller must reject
 # that terminal state even if the buffered result otherwise matches.
-$| = 1;
+local $| = 1;
 print '{"status":"accepted"}';
 kill 'TERM', $$ if $ENV{OPENI2PD_VECTOR_FIXTURE_SIGNAL};

@@ -13,8 +13,7 @@ use JSON::PP;
 my $name = basename($0);
 die "MOCK_LOG is required\n"
   unless defined $ENV{MOCK_LOG} && length $ENV{MOCK_LOG};
-open my $log, '>>', $ENV{MOCK_LOG} or die "mock log: $!\n";
-print {$log} JSON::PP->new->canonical->encode(
+my $json_line = JSON::PP->new->canonical->encode(
     {
         name      => $name,
         args      => [@ARGV],
@@ -23,6 +22,8 @@ print {$log} JSON::PP->new->canonical->encode(
         hardening => $ENV{DEB_BUILD_MAINT_OPTIONS}    // '',
     }
 ) . "\n";
+open my $log, '>>', $ENV{MOCK_LOG} or die "mock log: $!\n";
+print {$log} $json_line or die "mock log write: $!\n";
 close $log or die "mock log close: $!\n";
 exit 23 if ( $ENV{MOCK_FAIL} // '' ) eq $name;
 

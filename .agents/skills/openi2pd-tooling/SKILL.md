@@ -518,3 +518,9 @@ Record the exact AGENTS.md `Tracking states` value and state which validations w
 - [Tools documentation](../../../docs/tools/README.md)
 - [Perl migration](../../../docs/development/perl-migration.md)
 - [Global policy](../../../AGENTS.md)
+
+For focused Perl::Critic cleanup, preserve significant whitespace in
+extended regexes and keep invalid-input controls beside the positive
+fixtures. Assemble a complete log record before opening its append handle
+and check both write and close status. Keep the full-profile and focused
+results separate in tracking.

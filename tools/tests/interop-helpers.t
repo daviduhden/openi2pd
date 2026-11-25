@@ -62,7 +62,7 @@ sub fixture {
     close $file         or die "close fixture failed\n";
     return $path;
 }
-my $valid = fixture( 'quoted space.hex', "# comment\n00 41 ff\n" );
+my $valid = fixture( 'quoted space.hex', "# comment\n \t# indented\n00 41 ff\n" );
 my ( $code, $out, $err ) = invoke( 'hex-to-binary.pl', $valid );
 is( $code, 0,                      'valid commented hexadecimal succeeds' );
 is( $out,  pack( 'H*', '0041ff' ), 'stdout is exact binary including NUL' );
