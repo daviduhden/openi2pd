@@ -33,6 +33,7 @@ struct PeerRequestLedgerTestAccess
 		peer.m_RemoteBitfield.set ();
 		peer.m_WriteObserverForTesting = std::move (observer);
 	}
+	static void Have (PeerConnection & peer, uint32_t index) { peer.SendHaveMsg (index); }
 	static void Queue (PeerConnection & peer, uint32_t index, uint32_t offset, uint32_t length, uint64_t now)
 	{
 		assert (std::in_range<int> (index) && index < peer.m_Torrent->GetNumPieces ());
@@ -180,6 +181,24 @@ struct Fixture
 		assert (bufbe32toh (frame.data () + 13) == blockLength);
 	}
 };
+
+void TestHaveAfterStorage ()
+{
+	Fixture fixture (false);
+	auto & piece = fixture.torrent->GetPiece (0);
+	uint8_t bytes[blockLength] { };
+	assert (piece.BlockReceived (bytes, sizeof (bytes), 0));
+	assert (piece.VerifyHash ());
+	piece.SetIsSaving (true);
+	PeerRequestLedgerTestAccess::Have (fixture.peer, 0);
+	assert (fixture.frames.empty ());
+	piece.SetIsSaving (false);
+	PeerRequestLedgerTestAccess::Have (fixture.peer, 0);
+	assert (fixture.frames.size () == 1 && fixture.frames.front ().at (4) == eMessageTypeHave);
+	fixture.torrent->InvalidatePiece (0);
+	PeerRequestLedgerTestAccess::Have (fixture.peer, 0);
+	assert (fixture.frames.size () == 1);
+}
 
 void TestLegacyExpiryAndSilence ()
 {
@@ -349,6 +368,7 @@ void TestChokeAndExplicitRetirement ()
 
 int main ()
 {
+	TestHaveAfterStorage ();
 	TestLegacyExpiryAndSilence ();
 	TestFastCancellationAuthority ();
 	TestExactRejectAndCancelledPiece ();

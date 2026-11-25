@@ -693,3 +693,7 @@ a bounded resume bitfield together into one owner-executor completion.
 Validate the live instance, apply both observations and only then schedule
 verification. Existing bytes and resume claims remain unavailable until
 hashed. Backend and path setup still belong to the current disk phase.
+
+Compare resume bits, handshake availability, RPC pieces and incremental
+HAVE delivery when auditing storage errors. A restored resume bit may
+precede hashing. Recheck the piece at the queued announcement boundary.

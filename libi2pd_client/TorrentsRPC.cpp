@@ -687,7 +687,7 @@ namespace torrents
 			{ "pieces",
 				[] (std::shared_ptr<Torrent> torrent)
 				{
-					auto [bitfield, have] = torrent->CreateBitfield ();
+					auto [bitfield, have] = torrent->CreateBitfield (BitfieldUse::Advertise);
 					std::string b64pieces;
 					b64pieces.resize (boost::beast::detail::base64::encoded_size (bitfield.size ()));
 					boost::beast::detail::base64::encode (b64pieces.data (), bitfield.data (), bitfield.size ());

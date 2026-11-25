@@ -1579,6 +1579,12 @@ namespace torrents
 		return m_IsVerified && !m_IsSaving && !m_IsVerificationPending;
 	}
 
+	bool Piece::IncludeInBitfield (BitfieldUse use) const
+	{
+		std::lock_guard<std::mutex> l (m_Mutex);
+		return !m_Blocks && !m_IsSaving && !m_IsVerificationPending && (use == BitfieldUse::Resume || m_IsVerified);
+	}
+
 	void Piece::MarkPendingVerification ()
 	{
 		std::lock_guard<std::mutex> l (m_Mutex);
@@ -3215,7 +3221,7 @@ namespace torrents
 			= TrackerSchedule::EffectiveInterval (interval, GetMinInterval (trackerID));
 	}
 
-	std::pair<std::vector<uint8_t>, boost::logic::tribool> Torrent::CreateBitfield () const
+	std::pair<std::vector<uint8_t>, boost::logic::tribool> Torrent::CreateBitfield (BitfieldUse use) const
 	{
 		size_t numPieces = m_Pieces.size ();
 		size_t bitfieldSize = numPieces / 8;
@@ -3230,7 +3236,7 @@ namespace torrents
 			for (int j = 0; j < 8; j++)
 			{
 				if (idx >= numPieces) break;
-				if (m_Pieces[idx].IsComplete () && !m_Pieces[idx].IsSaving ())
+				if (m_Pieces[idx].IncludeInBitfield (use))
 				{
 					ret[i] |= bit;
 					none = false;
@@ -4826,7 +4832,7 @@ namespace torrents
 			m_IsFast = true;
 		m_IsEstablished = true;
 		// send bitfield, have all or have none
-		auto [bitfield, have] = m_Torrent->CreateBitfield ();
+		auto [bitfield, have] = m_Torrent->CreateBitfield (BitfieldUse::Advertise);
 		if (!have) // have none
 		{
 			if (m_IsFast) SendHaveNoneMsg ();
@@ -4872,7 +4878,9 @@ namespace torrents
 
 	void PeerConnection::SendHaveMsg (uint32_t index)
 	{
-		if (m_IsEstablished)
+		// The service may retire a piece after the disk queues its HAVE.
+		if (m_IsEstablished && m_Torrent && index < m_Torrent->GetNumPieces ()
+			&& m_Torrent->GetPiece (index).IncludeInBitfield (BitfieldUse::Advertise))
 		{
 			uint8_t buf[HAVE_MSG_PAYLOAD_LENGTH + 5];
 			htobe32buf (buf, HAVE_MSG_PAYLOAD_LENGTH + 1); // length

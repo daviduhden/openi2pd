@@ -630,6 +630,8 @@ namespace torrents
 		PieceFileFragment (const PieceFileFragment &) = default;
 	};
 
+	enum class BitfieldUse { Resume, Advertise };
+
 	class PeerConnection;
 	/// One piece's block map, buffer and SHA-1 verification state. The
 	/// mutex serializes access by the service and disk threads; the buffer
@@ -670,6 +672,9 @@ namespace torrents
 		/// local re-verification is pending. Use this distinction for
 		/// availability.
 		bool IsVerified () const;
+		/// Snapshot completion and storage state under one lock. A resume
+		/// claim may precede hashing, while peer availability requires it.
+		bool IncludeInBitfield (BitfieldUse use) const;
 		// Local data re-verification. A resume bitfield or a pre-existing
 		// final file only claims which bytes should be on disk; this state
 		// marks a complete piece whose bytes have not been hashed in this
@@ -1341,14 +1346,12 @@ namespace torrents
 		}
 		size_t GetNumPieceFailurePeers () const { return m_PeerPieceFailures.size (); }
 		void SetSelectedComplete ();
-		/// Build the BEP 3 bitfield from the pieces that may be advertised
-		/// now. A piece still being written is reported as absent, so this
-		/// can differ from the resume bitmap.
+		/// Build the resume bitmap or the verified peer availability bitmap.
 		/// @return (bitfield, true = all set, false = none set,
 		///         indeterminate = mixed). A metadata-less torrent returns an
 		///         empty bitfield and false.
 		std::pair<std::vector<uint8_t>, boost::logic::tribool>
-		CreateBitfield () const; // (bitfield, true - all false - none)
+		CreateBitfield (BitfieldUse use = BitfieldUse::Resume) const; // (bitfield, true - all false - none)
 		/// Build the swarm-availability bitmap: the union of every
 		/// established peer's advertised bitfield, clamped to the local
 		/// piece count and padded to the exact wire length.

@@ -302,6 +302,7 @@ static void TestResumeVerificationGate ()
 	assert (!torrent.ApplyBitfield ({ 0xC1 }));
 	assert (torrent.CreateBitfield ().first == std::vector<uint8_t> ({ 0x00 }));
 	assert (torrent.ApplyBitfield ({ 0xC0 }));
+	assert (torrent.CreateBitfield (BitfieldUse::Advertise).first == std::vector<uint8_t> ({ 0x00 }));
 	// Applying a resume bitfield alone must not count as verified data.
 	assert (!torrent.AreAllPiecesVerified ());
 	{
