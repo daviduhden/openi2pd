@@ -55,7 +55,7 @@ sub first_line {
     my $line = '';
     read( $fh, $line, 512 );
     close $fh;
-    $line =~ s/^\x{FEFF}//;
+    $line =~ s/ ^\x{FEFF} //x;
     return $line;
 }
 
@@ -67,6 +67,9 @@ my %skip_directory = map { $_ => 1 } qw(
 # Generated and dependency trees are not project sources; scanning them would
 # report third-party files that the project does not maintain.
 my ( @python_files, @python_shebang, @perl_modules );
+my $python_project_file =
+  qr/ SConstruct|SConscript|wscript|pyproject\.toml|setup\.cfg /ix;
+my $python_requirements_file = qr/ requirements[^\/]*\.txt /ix;
 
 find(
     {
@@ -80,13 +83,12 @@ find(
             my $name     = basename($path);
             my $relative = repo_relative($path);
             push @perl_modules, $relative
-              if $relative =~ m{\Ascripts/lib/.*\.pm\z};
+              if $relative =~ m{ \Ascripts/lib/.*\.pm\z }x;
             push @python_files, $relative
-              if ( $name =~ /\.(?:py|pyw|pyi|pyx|pxd|ipynb)\z/i
-                || $name =~ /\.py\.in\z/i
+              if ( $name =~ / \.(?:py|pyw|pyi|pyx|pxd|ipynb)\z /ix
+                || $name =~ / \.py\.in\z /ix
                 || $name =~
-/\A(?:SConstruct|SConscript|wscript|pyproject\.toml|setup\.cfg|requirements[^\/]*\.txt)\z/i
-              );
+                / \A(?:$python_project_file|$python_requirements_file)\z /x );
 
             my $prefix = first_line($path);
             if ( defined $prefix ) {
@@ -94,13 +96,13 @@ find(
                 # A shebang must be on the first line, but a BOM or a leading
                 # blank line is tolerated; only the first three lines are
                 # considered so a comment further down cannot match.
-                my @head    = split /\n/, $prefix;
+                my @head    = split / \n /x, $prefix;
                 my $shebang = join "\n",
                   @head[ 0 .. ( $#head < 2 ? $#head : 2 ) ];
                 if (
                     (
-                           $shebang =~ /^#!.*\b(?:python|pypy)[0-9.]*\b/im
-                        || $shebang =~ /^#!.*\b(?:python|pypy)[0-9.]*\b/i
+                           $shebang =~ / ^\#!.*\b(?:python|pypy)[0-9.]*\b /imx
+                        || $shebang =~ / ^\#!.*\b(?:python|pypy)[0-9.]*\b /ix
                     )
                   )
                 {
@@ -190,17 +192,22 @@ is_deeply(
 # Everything reported by this suite is rebuilt from splitdir().
 my $native_example =
   File::Spec->catfile( $root, 'tools', 'scripts', 'i2pdctl' );
-like( repo_relative($native_example),
-    qr{\Atools/scripts/i2pdctl\z},
-    'repository-relative paths use / on every platform' );
+like(
+    repo_relative($native_example),
+    qr{ \Atools/scripts/i2pdctl\z }x,
+    'repository-relative paths use / on every platform'
+);
 unlike( join( "\n", @discovered ),
-    qr{\\}, 'discovered inventory contains no native separators' );
+    qr{ \\ }x, 'discovered inventory contains no native separators' );
 SKIP: {
     skip 'native separator is / on this platform', 1
       unless $^O eq 'MSWin32' || $^O eq 'msys';
     my $native = $root . '\\tools\\scripts\\i2pdctl';
-    like( repo_relative($native), qr{\Atools/scripts/i2pdctl\z},
-        'a backslash path is normalised before comparison' );
+    like(
+        repo_relative($native),
+        qr{ \Atools/scripts/i2pdctl\z }x,
+        'a backslash path is normalised before comparison'
+    );
 }
 
 # Modules shipped with the Perl core on OpenBSD/Linux. This also rejects
@@ -212,20 +219,24 @@ my %allowed_module = map { $_ => 1 } qw(
   FindBin Getopt::Long HTTP::Tiny IO::Select IO::Socket::INET IPC::Open3
   JSON::PP POSIX Symbol Test::More Time::HiRes
 );
-my %maintained_module = map {
-    my $module = $_;
-    $module =~ s{\Ascripts/lib/}{};
-    $module =~ s{\.pm\z}{};
-    $module =~ s{/}{::}g;
-    $module => 1;
-} @perl_modules;
+
+sub module_namespace {
+    my ($module) = @_;
+    $module =~ s{ \Ascripts/lib/ }{}x;
+    $module =~ s{ \.pm\z }{}x;
+    $module =~ s{ / }{::}gx;
+    return $module;
+}
+
+my %maintained_module = map { module_namespace($_) => 1 } @perl_modules;
 
 sub source_modules {
     my ($source) = @_;
 
     # POD begins with a column-one directive and continues through =cut.
-    $source =~ s/^=[A-Za-z]\w*\b[^\n]*\n.*?(?:^=cut\b[^\n]*(?:\n|\z)|\z)//gms;
-    return $source =~ /^[ \t]*(?:use|require)\s+([A-Za-z_][A-Za-z0-9_:]*)/mg;
+    $source =~
+      s/ ^=[A-Za-z]\w*\b[^\n]*\n.*?(?:^=cut\b[^\n]*(?:\n|\z)|\z) //gmsx;
+    return $source =~ / ^[ \t]*(?:use|require)\s+([A-Za-z_][A-Za-z0-9_:]*) /mgx;
 }
 
 is_deeply(
@@ -239,15 +250,18 @@ is_deeply(
 );
 
 my @dangerous = (
-    [ qr/(?<![\w:])system\s*\(/,             'system invocation' ],
-    [ qr/(?<![\w:])exec\s*\(/,               'exec invocation' ],
-    [ qr/(?<![\w:])qx\s*[\(\{\/]/,           'qx invocation' ],
-    [ qr/(?<![\w:])eval\s+["'\$]/,           'string eval' ],
-    [ qr/(?<![\w:])(?:tempnam|tmpnam)\s*\(/, 'insecure temporary-name helper' ],
-    [ qr/(?<![\w:])chmod\s+0?777\b/,         'world-writable chmod' ],
-    [ qr/(?<![\w:])chmod\s+0?666\b/,         'world-writable chmod' ],
+    [ qr/ (?<![\w:])system\s*\( /x,   'system invocation' ],
+    [ qr/ (?<![\w:])exec\s*\( /x,     'exec invocation' ],
+    [ qr/ (?<![\w:])qx\s*[\(\{\/] /x, 'qx invocation' ],
+    [ qr/ (?<![\w:])eval\s+["'\$] /x, 'string eval' ],
     [
-        qr/\bopen\b\s*\(?\s*[^,\n]+,\s*["'][^"']*[^"'\-]\|["']/,
+        qr/ (?<![\w:])(?:tempnam|tmpnam)\s*\( /x,
+        'insecure temporary-name helper'
+    ],
+    [ qr/ (?<![\w:])chmod\s+0?777\b /x, 'world-writable chmod' ],
+    [ qr/ (?<![\w:])chmod\s+0?666\b /x, 'world-writable chmod' ],
+    [
+        qr/ \bopen\b\s*\(?\s*[^,\n]+,\s*["'][^"']*[^"'\-]\|["'] /x,
         'single-scalar pipe open'
     ],
 );
@@ -265,34 +279,35 @@ my $file_read = 'open'
 unlike( $file_read, $pipe_pattern,
     'file read cannot consume a later quoted workflow literal' );
 
-for my $relative (@scripts) {
-    my $path = File::Spec->catfile( $root, split m{/}, $relative );
+sub check_maintained_script {
+    my ($relative) = @_;
+    my $path = File::Spec->catfile( $root, split m{ / }x, $relative );
     ok( -f $path, "$relative exists" );
     my $text = read_file($path);
-    next unless defined $text;
+    return unless defined $text;
 
     my $line = first_line($path);
     like(
         $line,
-        qr/\A#!\/usr\/bin\/env perl\b/,
+        qr/ \A\#!\/usr\/bin\/env\ perl\b /x,
         "$relative uses a portable Perl shebang"
-    ) if defined $line && $relative !~ /\.pm\z/;
-    like( $text, qr/^\s*use\s+strict\s*;/m,   "$relative enables strict" );
-    like( $text, qr/^\s*use\s+warnings\s*;/m, "$relative enables warnings" );
+    ) if defined $line && $relative !~ / \.pm\z /x;
+    like( $text, qr/ ^\s*use\s+strict\s*; /mx,   "$relative enables strict" );
+    like( $text, qr/ ^\s*use\s+warnings\s*; /mx, "$relative enables warnings" );
     unlike(
         $text,
-        qr/^\s*no\s+(?:strict|warnings)\b/m,
+        qr/ ^\s*no\s+(?:strict|warnings)\b /mx,
         "$relative never disables strict or warnings"
     );
     unlike(
         $text,
-        qr/^#!.*\b(?:python|pypy)[0-9.]*\b/im,
+        qr/ ^\#!.*\b(?:python|pypy)[0-9.]*\b /imx,
         "$relative has no Python shebang"
     );
 
     if (
         $^O ne 'MSWin32'
-        && (   $relative =~ m{\A(?:tools/scripts|android/tools|i18n)/}
+        && (   $relative =~ m{ \A(?:tools/scripts|android/tools|i18n)/ }x
             || $relative eq 'scripts/validate-agent-knowledge.pl'
             || $relative eq 'tests/interop/check-vectors.pl' )
       )
@@ -311,18 +326,23 @@ for my $relative (@scripts) {
         my ( $pattern, $description ) = @{$rule};
         unlike( $text, $pattern, "$relative avoids $description" );
     }
+    return;
 }
 
+check_maintained_script($_) for @scripts;
+
+my $cmake_i2pdctl     = qr{ "\$\{CMAKE_CURRENT_SOURCE_DIR\}/scripts/i2pdctl" }x;
+my $cmake_module_list = qr/ \$\{I2PD_AGENT_KNOWLEDGE_MODULES\} /x;
 my $tools_cmake =
   read_file( File::Spec->catfile( $root, 'tools', 'CMakeLists.txt' ) );
 like(
     $tools_cmake,
-qr/install\s*\(\s*PROGRAMS\s+"\$\{CMAKE_CURRENT_SOURCE_DIR\}\/scripts\/i2pdctl"/s,
+    qr/ install\s*\(\s*PROGRAMS\s+$cmake_i2pdctl /sx,
     'CMake installs i2pdctl as a program'
 );
 like(
     $tools_cmake,
-    qr/find_package\s*\(\s*Perl\s*\)/,
+    qr/ find_package\s*\(\s*Perl\s*\) /x,
     'CMake discovers the Perl interpreter for static checks'
 );
 ok(
@@ -340,9 +360,10 @@ sub cmake_list_entries {
     my ( $text, $pattern ) = @_;
     my ($block) = $text =~ $pattern;
     return () unless defined $block;
-    my $operand = qr/"\$\{(CMAKE_CURRENT_SOURCE_DIR|PROJECT_ROOT)\}\/([^"]+)"/;
+    my $operand =
+      qr/ "\$\{(CMAKE_CURRENT_SOURCE_DIR|PROJECT_ROOT)\}\/([^"]+)" /x;
     my @entries;
-    while ( $block =~ /$operand/g ) {
+    while ( $block =~ /$operand/gx ) {
         my ( $anchor, $tail ) = ( $1, $2 );
         my $relative =
           $anchor eq 'CMAKE_CURRENT_SOURCE_DIR' ? "tools/$tail" : $tail;
@@ -350,15 +371,15 @@ sub cmake_list_entries {
         # The critic command also names its profile; only script
         # operands belong to the inventory comparison.
         push @entries, $relative
-          if $relative =~ /\.(?:pl|pm|t)\z/ || $relative =~ m{/i2pdctl\z};
+          if $relative =~ / \.(?:pl|pm|t)\z /x || $relative =~ m{ /i2pdctl\z }x;
     }
     return @entries;
 }
 
 my @expected_syntax =
-  grep { $_ ne 'tools/scripts/i2pdctl' && !/\.pm\z/ } @scripts;
+  grep { $_ ne 'tools/scripts/i2pdctl' && !/ \.pm\z /x } @scripts;
 my @syntax_entries = cmake_list_entries( $tools_cmake,
-    qr/set\(I2PD_PERL_SYNTAX_SCRIPTS(.*?)\)\n/s );
+    qr/ set\(I2PD_PERL_SYNTAX_SCRIPTS(.*?)\)\n /sx );
 is_deeply(
     [ sort @syntax_entries ],
     [ sort @expected_syntax ],
@@ -366,14 +387,15 @@ is_deeply(
 );
 
 my @critic_entries =
-  cmake_list_entries( $tools_cmake, qr/add_test\(NAME perl-critic(.*?)\)\n/s );
+  cmake_list_entries( $tools_cmake,
+    qr/ add_test\(NAME\ perl-critic(.*?)\)\n /sx );
 is_deeply(
     [ sort @critic_entries ],
-    [ sort grep { !/\.pm\z/ } @scripts ],
+    [ sort grep { !/ \.pm\z /x } @scripts ],
     'the optional Perl::Critic target registers every maintained script'
 );
 my @cmake_modules = cmake_list_entries( $tools_cmake,
-    qr/set\(I2PD_AGENT_KNOWLEDGE_MODULES(.*?)\)\n/s );
+    qr/ set\(I2PD_AGENT_KNOWLEDGE_MODULES(.*?)\)\n /sx );
 is_deeply(
     [ sort @cmake_modules ],
     [ sort @perl_modules ],
@@ -381,12 +403,12 @@ is_deeply(
 );
 like(
     $tools_cmake,
-qr/list\(APPEND I2PD_PERL_SYNTAX_SCRIPTS \$\{I2PD_AGENT_KNOWLEDGE_MODULES\}\)/,
+    qr/ list\(APPEND\ I2PD_PERL_SYNTAX_SCRIPTS\ $cmake_module_list\) /x,
     'validator modules participate in syntax coverage'
 );
 like(
     $tools_cmake,
-    qr/add_test\(NAME perl-critic.*?\$\{I2PD_AGENT_KNOWLEDGE_MODULES\}/s,
+    qr/ add_test\(NAME\ perl-critic.*?$cmake_module_list /sx,
     'validator modules participate in optional style coverage'
 );
 
@@ -432,17 +454,20 @@ my @consumers = (
 # effective patterns are scanned; a real interpreter or package command
 # in a pattern is still rejected.
 my %comment_only_consumer = map { $_ => 1 } qw(.gitignore .dockerignore);
+my $python_command     = qr/ \bpython[0-9.]*\b|\bpip[0-9.]*\b|\bpy\s+-3\b /ix;
+my $python_environment = qr/ \bPYTHON(?:PATH|HOME)\b /ix;
+my $python_environment_tool = qr/ \b(?:virtualenv|venv|tox|poetry)\b /ix;
 for my $relative (@consumers) {
-    my $path = File::Spec->catfile( $root, split m{/}, $relative );
+    my $path = File::Spec->catfile( $root, split m{ / }x, $relative );
     my $text = read_file($path);
     ok( -f $path, "$relative exists" );
     next unless defined $text;
     if ( $comment_only_consumer{$relative} ) {
-        $text = join "\n", grep { !/^\s*#/ } split /\n/, $text;
+        $text = join "\n", grep { !/ ^\s*\# /x } split / \n /x, $text;
     }
     unlike(
         $text,
-qr/(?:\bpython[0-9.]*\b|\bpip[0-9.]*\b|\bpy\s+-3\b|\bPYTHON(?:PATH|HOME)\b|\b(?:virtualenv|venv|tox|poetry)\b)/i,
+        qr/ $python_command | $python_environment | $python_environment_tool /x,
         "$relative has no Python invocation"
     );
 }

@@ -122,6 +122,11 @@ a TUI client.
 
 ## Known issues and decisions
 
+When making a Perl checker regex free-spacing, escape literal spaces
+and hashes and preserve capture order. Review the flags on interpolated
+`qr` fragments where the patterns are defined. Keep the scanner's
+matching grammar and source-contract mutations in sync.
+
 For repeated source APIs, a single substring-presence assertion cannot
 protect each consumer. Inventory complete closed call lines by receiver,
 reject duplicate/unknown/unbounded calls, and witness separate negatives

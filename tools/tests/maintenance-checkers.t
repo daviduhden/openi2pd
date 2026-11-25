@@ -44,6 +44,7 @@ sub write_file {
     open my $fh, '>:raw', $path or die "open $path: $!\n";
     print {$fh} $contents;
     close $fh or die "close $path: $!\n";
+    return;
 }
 
 sub run_checker {
@@ -125,7 +126,7 @@ my $shell_checker =
 
 # Host-language inputs are data fixtures. Never execute their commands;
 # only the source-only policy checker runs in the authorized CI suite.
-{
+sub shell_policy_fixtures {
     my $tmp      = tempdir( CLEANUP => 1 );
     my $source   = File::Spec->catfile( $tmp, 'probe.sh' );
     my @accepted = (
@@ -176,9 +177,9 @@ my $shell_checker =
         is( $code, 1,
             'host scanner rejects inline or standard-input interpreter source'
         );
-        like( $out, qr/probe[.]sh:1:/,
+        like( $out, qr/probe[.]sh:1:/x,
             'host violation identifies the source location' );
-        unlike( $out, qr/secret-inline-marker/,
+        unlike( $out, qr/secret-inline-marker/x,
             'host diagnostic never echoes code operands' );
     }
     write_file( $source, "perl -c tools/helper.pl\n" );
@@ -220,7 +221,7 @@ my $shell_checker =
     write_file( $markdown, "```sh\nperl -e 'print 1'\n```\n" );
     ( $code, $out ) = run_checker( $shell_checker, '--root', $tmp );
     is( $code, 1, 'documentation shell fences obey the same embedding policy' );
-    like( $out, qr/guide[.]md:2:/,
+    like( $out, qr/guide[.]md:2:/x,
         'documentation fence preserves original line numbers' );
 
     write_file( $markdown, "Plain documentation.\n" );
@@ -242,26 +243,26 @@ my $shell_checker =
         write_file( $yaml, $packages . "  - run: |\n      $command\n" );
         ( $code, $out ) = run_checker( $shell_checker, '--root', $tmp );
         is( $code, 1, 'executable YAML remains subject to interpreter policy' );
-        like( $out, qr/workflow[.]yml:11:/,
+        like( $out, qr/workflow[.]yml:11:/x,
             'masked metadata retains original executable line numbers' );
-        unlike( $out, qr/secret-yaml-marker/,
+        unlike( $out, qr/secret-yaml-marker/x,
             'YAML policy diagnostic omits source operands' );
     }
     write_file( $yaml, "steps:\n  - run: perl\n" );
     ( $code, $out ) = run_checker( $shell_checker, '--root', $tmp );
     is( $code, 1, 'inline YAML bare interpreter still rejects stdin source' );
-    like( $out, qr/workflow[.]yml:2:/, 'inline YAML location is preserved' );
+    like( $out, qr/workflow[.]yml:2:/x, 'inline YAML location is preserved' );
     my $bad_packages = $packages;
-    $bad_packages =~ s/        perl\n/        perl -e 'secret-yaml-marker'\n/;
+    $bad_packages =~ s/[ ]{8}perl\n/        perl -e 'secret-yaml-marker'\n/x;
     write_file( $yaml, $bad_packages );
     ( $code, $out ) = run_checker( $shell_checker, '--root', $tmp );
     is( $code, 1, 'executable-looking package data is not masked' );
-    like( $out, qr/workflow[.]yml:5:/,
+    like( $out, qr/workflow[.]yml:5:/x,
         'invalid package-data line is retained' );
-    unlike( $out, qr/secret-yaml-marker/,
+    unlike( $out, qr/secret-yaml-marker/x,
         'package-data diagnostic omits operands' );
     my $unknown = $packages;
-    $unknown =~ s{msys2/setup-msys2}{example/unrelated};
+    $unknown =~ s{msys2/setup-msys2}{example/unrelated}x;
     write_file( $yaml, $unknown );
     ( $code, $out ) = run_checker( $shell_checker, '--root', $tmp );
     is( $code, 1, 'package masking does not trust unrelated action schemas' );
@@ -271,7 +272,9 @@ my $shell_checker =
     );
     ( $code, $out ) = run_checker( $shell_checker, '--root', $tmp );
     is( $code, 1, 'nested mappings cannot impersonate direct package inputs' );
+    return;
 }
+shell_policy_fixtures();
 
 # Crash diagnostics must reject commands that expose process arguments
 # or memory. Reproduce only the checker and its workflow inputs.
@@ -306,12 +309,26 @@ sub workflow_crash_fixtures {
     my ( $code, $out ) = run_checker($checker);
     is( $code, 0,
         'current workflow crash commands expose code locations only' );
+    linux_floor_workflow_fixtures( $tmp, $checker );
+    android_workflow_fixtures( $tmp, $checker );
+    windows_workflow_fixtures( $tmp, $checker );
+    openbsd_workflow_fixtures( $tmp, $checker );
+    crypto_workflow_fixtures( $tmp, $checker );
+    validation_workflow_fixtures( $tmp, $checker );
+    linux_build_action_fixtures( $tmp, $checker );
+    agent_maintenance_workflow_fixtures( $tmp, $checker );
+    return;
+}
+
+sub linux_floor_workflow_fixtures {
+    my ( $tmp, $checker ) = @_;
+    my ( $code, $out );
     my $linux =
       File::Spec->catfile( $tmp, '.github', 'workflows', 'build-linux.yml' );
     my $floor_workflow_source = read_fixture_file($linux);
     my $ungated_floor         = $floor_workflow_source;
     ok(
-        $ungated_floor =~ s/inputs\.linux_floor_toolchains/true/,
+        $ungated_floor =~ s/inputs\.linux_floor_toolchains/true/x,
         'fixture removes the distribution toolchain opt-in'
     );
     write_file( $linux, $ungated_floor );
@@ -319,17 +336,23 @@ sub workflow_crash_fixtures {
     is( $code, 1, 'workflow checker requires an explicit toolchain opt-in' );
     like(
         $out,
-        qr/must stay gated on inputs\.linux_floor_toolchains/,
+        qr/must[ ]stay[ ]gated[ ]on[ ]inputs\.linux_floor_toolchains/x,
         'diagnostic identifies the distribution toolchain gate'
     );
     write_file( $linux, $floor_workflow_source );
+    return;
+}
+
+sub android_workflow_fixtures {
+    my ( $tmp, $checker ) = @_;
+    my ( $code, $out );
     my $android =
       File::Spec->catfile( $tmp, '.github', 'workflows', 'build-android.yml' );
     my $android_source            = read_fixture_file($android);
     my $unbounded_instrumentation = $android_source;
     ok(
         $unbounded_instrumentation =~
-          s/timeout --kill-after=15s 30m (?=\.\/gradlew)//,
+          s/timeout[ ]--kill-after=15s[ ]30m[ ](?=\.\/gradlew)//x,
         'fixture removes the instrumentation command deadline'
     );
     write_file( $android, $unbounded_instrumentation );
@@ -337,70 +360,67 @@ sub workflow_crash_fixtures {
     is( $code, 1, 'workflow checker rejects unbounded instrumentation' );
     like(
         $out,
-        qr/Android instrumentation needs a deadline/,
+        qr/Android[ ]instrumentation[ ]needs[ ]a[ ]deadline/x,
         'diagnostic identifies the instrumentation deadline'
     );
     write_file( $android, $android_source );
     my $kvm_access    = q{sudo chmod u+rw /dev/kvm};
     my $overbroad_kvm = $android_source;
-    ok( $overbroad_kvm =~ s/\Q$kvm_access\E/sudo chmod a+rw \/dev\/kvm/,
+    ok( $overbroad_kvm =~ s/\Q$kvm_access\E/sudo chmod a+rw \/dev\/kvm/x,
         'fixture widens the KVM device permissions' );
     write_file( $android, $overbroad_kvm );
     ( $code, $out ) = run_checker($checker);
     is( $code, 1, 'workflow checker rejects world-writable KVM setup' );
     like(
         $out,
-        qr/Android UI must verify runner-only KVM access/,
+        qr/Android[ ]UI[ ]must[ ]verify[ ]runner-only[ ]KVM[ ]access/x,
         'diagnostic identifies the KVM access boundary'
     );
     write_file( $android, $android_source );
     my $unbounded_adb = $android_source;
-    ok(
-        $unbounded_adb =~
-          s/timeout --kill-after=5s 15s ("\$ADB" -s emulator-5554 logcat)/$1/,
-        'fixture removes the logcat deadline'
-    );
+    my $adb_deadline  = 'timeout --kill-after=5s 15s ';
+    my $adb_logcat    = q{"$ADB" -s emulator-5554 logcat};
+    ok( $unbounded_adb =~ s/\Q$adb_deadline\E(\Q$adb_logcat\E)/$1/x,
+        'fixture removes the logcat deadline' );
     write_file( $android, $unbounded_adb );
     ( $code, $out ) = run_checker($checker);
     is( $code, 1, 'workflow checker rejects unbounded emulator diagnostics' );
     like(
         $out,
-        qr/Android emulator diagnostics must be bounded/,
+        qr/Android[ ]emulator[ ]diagnostics[ ]must[ ]be[ ]bounded/x,
         'diagnostic identifies the missing ADB deadline'
     );
     write_file( $android, $android_source );
     my $unchecked_emulator = $android_source;
     my $liveness_check     = q{kill -0 "$emulator_pid"};
     ok(
-        $unchecked_emulator =~ s/\Q$liveness_check\E/true/,
+        $unchecked_emulator =~ s/\Q$liveness_check\E/true/x,
         'fixture removes the emulator liveness check'
     );
     write_file( $android, $unchecked_emulator );
     ( $code, $out ) = run_checker($checker);
     is( $code, 1, 'workflow checker rejects unchecked emulator startup' );
-    like(
-        $out,
-        qr/Android emulator startup must check process liveness/,
-        'diagnostic identifies the missing startup liveness check'
-    );
+    my $emulator_liveness =
+      q{Android emulator startup must check process liveness};
+    like( $out, qr/\Q$emulator_liveness\E/x,
+        'diagnostic identifies the missing startup liveness check' );
     write_file( $android, $android_source );
     my $avd_listing   = q{"$emulator" -list-avds};
     my $unchecked_avd = $android_source;
     ok(
-        $unchecked_avd =~ s/\Q$avd_listing\E/true/,
+        $unchecked_avd =~ s/\Q$avd_listing\E/true/x,
         'fixture removes emulator-side AVD discovery'
     );
     write_file( $android, $unchecked_avd );
     ( $code, $out ) = run_checker($checker);
     is( $code, 1, 'workflow checker requires emulator-side AVD discovery' );
-    like(
-        $out,
-qr/Android AVD producer and emulator must share a verified lookup directory/,
-        'diagnostic identifies the shared AVD lookup directory'
-    );
+    my $avd_lookup =
+q{Android AVD producer and emulator must share a verified lookup directory};
+    like( $out, qr/\Q$avd_lookup\E/x,
+        'diagnostic identifies the shared AVD lookup directory' );
     write_file( $android, $android_source );
     my $package_guard  = q{name='dev[.]uhden[.]i2pd'};
-    my @package_checks = $android_source =~ /\Q$package_guard\E/g;
+    my @package_checks = $android_source =~ /\Q$package_guard\E/gx;
     is( scalar @package_checks, 2, 'signer guards both APKs' );
 
     for my $mutated_check ( 1 .. 2 ) {
@@ -415,7 +435,7 @@ qr/Android AVD producer and emulator must share a verified lookup directory/,
         is( $code, 1, 'workflow checker rejects wildcard package matching' );
         like(
             $out,
-            qr/exact APK package check missing/,
+            qr/exact[ ]APK[ ]package[ ]check[ ]missing/x,
             'diagnostic identifies the package check'
         );
     }
@@ -458,12 +478,16 @@ qr/Android AVD producer and emulator must share a verified lookup directory/,
     {
         my ( $before, $after ) = @{$boundary};
         my $candidate = $android_source;
-        ok( $candidate =~ s/\Q$before\E/$after/,
+        ok( $candidate =~ s/\Q$before\E/$after/x,
             'R8 fixture changes the actual probe dependency' );
         write_file( $android, $candidate );
         ( $code, $out ) = run_checker($checker);
         is( $code, 1, 'probe refuses arbitrary cached R8 selection' );
-        like( $out, qr/Java 25 probe/, 'R8 resolution boundary is diagnosed' );
+        like(
+            $out,
+            qr/Java[ ]25[ ]probe/x,
+            'R8 resolution boundary is diagnosed'
+        );
     }
     write_file( $android, $android_source );
     my $missing_main = $android_source;
@@ -499,20 +523,34 @@ qr/Android AVD producer and emulator must share a verified lookup directory/,
         'API floor diagnostic identifies the overlay contract'
     );
     write_file( $overlay, $overlay_source );
+    return;
+}
+
+sub windows_workflow_fixtures {
+    my ( $tmp, $checker ) = @_;
+    my ( $code, $out );
     my $windows =
       File::Spec->catfile( $tmp, '.github', 'workflows', 'build-windows.yml' );
     open my $fh, '<', $windows or BAIL_OUT("read workflow fixture: $!");
     my $source = do { local $/ = undef; <$fh> };
     close $fh or BAIL_OUT("close workflow fixture: $!");
+    my $crash_debugger        = qr/ crash [ ] debugger [ ] line /x;
+    my $crash_file            = qr/ crash [ ] command [ ] file /x;
+    my $worker_initialization = 'worker initialization diagnostic';
+    my $worker_diagnostic     = qr/
+        \Q$worker_initialization\E
+        | unsupported [ ] $crash_debugger
+        | missing [ ] bounded [ ] $crash_file
+    /x;
     my $reusable = $source;
-    $reusable =~ s/^(  workflow_dispatch:)/  workflow_call:\n$1/m;
+    $reusable =~ s/^([ ]{2}workflow_dispatch:)/  workflow_call:\n$1/mx;
     isnt( $reusable, $source, 'workflow fixture adds a reusable trigger' );
     write_file( $windows, $reusable );
     ( $code, $out ) = run_checker($checker);
     is( $code, 1, 'workflow checker rejects reusable workflow triggers' );
     like(
         $out,
-        qr/unsupported trigger 'workflow_call'/,
+        qr/unsupported[ ]trigger[ ]'workflow_call'/x,
         'reusable trigger reports its unsupported event'
     );
     write_file( $windows, $source );
@@ -532,7 +570,7 @@ qr/Android AVD producer and emulator must share a verified lookup directory/,
     }
     write_file( $windows, $source );
     my $invalid_quit = $source;
-    $invalid_quit =~ s/; q"/; q 1"/g;
+    $invalid_quit =~ s/;[ ]q"/; q 1"/gx;
     isnt( $invalid_quit, $source,
         'debugger fixture adds an invalid quit operand' );
     write_file( $windows, $invalid_quit );
@@ -540,17 +578,17 @@ qr/Android AVD producer and emulator must share a verified lookup directory/,
     is( $code, 1, 'debugger quit must not use an unsupported exit operand' );
     like(
         $out,
-        qr/code locations only/,
+        qr/code[ ]locations[ ]only/x,
         'invalid quit fails command allowlist'
     );
     my $no_marker = $source;
-    $no_marker =~ s/debugger exception/debugger ignored/;
+    $no_marker =~ s/debugger[ ]exception/debugger ignored/x;
     write_file( $windows, $no_marker );
     ( $code, $out ) = run_checker($checker);
     is( $code, 1, 'debugger zero exit cannot hide an exception marker' );
     like(
         $out,
-        qr/crash marker must fail/,
+        qr/crash[ ]marker[ ]must[ ]fail/x,
         'marker classification is required'
     );
     write_file( $windows, $source );
@@ -561,8 +599,8 @@ qr/Android AVD producer and emulator must share a verified lookup directory/,
             q{$debugArguments = @('-G', '-noshell', },
             q{$debugArguments = @('-G', }
         ],
-        [ qr{,\s*'test-privsep-windows-supervisor'(?=\s*\)\))}, '' ],
-        [ '0xc0000142',                                         '0xc0000143' ],
+        [ qr{,\s*'test-privsep-windows-supervisor'(?=\s*\)\))}x, '' ],
+        [ '0xc0000142',                                          '0xc0000143' ],
         [ q{$debugger.WaitForExit(120000)}, q{$debugger.WaitForExit()} ],
         [
             'build-msvc/tests/Release/test-privsep-windows-supervisor.exe',
@@ -575,19 +613,16 @@ qr/Android AVD producer and emulator must share a verified lookup directory/,
 
         # Only the final worker-list operand permits layout whitespace.
         # Other mutations keep their exact literal authority boundaries.
-        my $pattern = ref($before) eq 'Regexp' ? $before : qr/\Q$before\E/;
-        ok( $candidate =~ s/(.*)$pattern/$1$after/s,
+        my $pattern = ref($before) eq 'Regexp' ? $before : qr/\Q$before\E/x;
+        ok( $candidate =~ s/(.*)$pattern/$1$after/sx,
             'worker diagnostic mutation changes its final worker boundary' );
         write_file( $windows, $candidate );
         ( $code, $out ) = run_checker($checker);
         is( $code, 1,
 'worker diagnostic requires parent-only tracing and bounded evidence'
         );
-        like(
-            $out,
-qr/worker initialization diagnostic|unsupported crash debugger line|missing bounded crash command file/,
-            'worker diagnostic names its missing evidence boundary'
-        );
+        like( $out, $worker_diagnostic,
+            'worker diagnostic names its missing evidence boundary' );
     }
     write_file( $windows, $source );
     for my $boundary (
@@ -632,12 +667,16 @@ qr/worker initialization diagnostic|unsupported crash debugger line|missing boun
     {
         my ( $before, $after ) = @{$boundary};
         my $candidate = $source;
-        ok( $candidate =~ s/\Q$before\E/$after/,
+        ok( $candidate =~ s/\Q$before\E/$after/x,
             'startup probe mutation changes its closed boundary' );
         write_file( $windows, $candidate );
         ( $code, $out ) = run_checker($checker);
         is( $code, 1, 'child tracing requires the bounded nonsecret probe' );
-        like( $out, qr/startup probe/, 'probe privacy boundary is diagnosed' );
+        like(
+            $out,
+            qr/startup[ ]probe/x,
+            'probe privacy boundary is diagnosed'
+        );
     }
     write_file( $windows, $source );
     for my $boundary (
@@ -677,14 +716,17 @@ qr/worker initialization diagnostic|unsupported crash debugger line|missing boun
     {
         my ( $before, $after ) = @{$boundary};
         my $candidate = $source;
-        ok( $candidate =~ s/\Q$before\E/$after/,
+        ok( $candidate =~ s/\Q$before\E/$after/x,
             'probe termination mutation changes its evidence boundary' );
         write_file( $windows, $candidate );
         ( $code, $out ) = run_checker($checker);
         is( $code, 1,
             'probe termination capture requires its exact safe grammar' );
-        like( $out, qr/startup probe/,
-            'termination evidence gap is diagnosed' );
+        like(
+            $out,
+            qr/startup[ ]probe/x,
+            'termination evidence gap is diagnosed'
+        );
     }
     write_file( $windows, $source );
     for my $boundary (
@@ -699,18 +741,24 @@ qr/worker initialization diagnostic|unsupported crash debugger line|missing boun
     {
         my ( $before, $after ) = @{$boundary};
         my $candidate = $source;
-        ok( $candidate =~ s/\Q$before\E/$after/,
+        ok( $candidate =~ s/\Q$before\E/$after/x,
             'startup diagnostic mutation changes a real boundary' );
         write_file( $windows, $candidate );
         ( $code, $out ) = run_checker($checker);
         is( $code, 1, 'startup diagnostics retain privacy, bounds and CTest' );
         like(
             $out,
-            qr/startup diagnostics|startup diagnostic contract/,
+            qr/startup[ ]diagnostics|startup[ ]diagnostic[ ]contract/x,
             'startup diagnostic identifies its unsafe boundary'
         );
     }
     write_file( $windows, $source );
+    return;
+}
+
+sub openbsd_workflow_fixtures {
+    my ( $tmp, $checker ) = @_;
+    my ( $code, $out );
     my $openbsd =
       File::Spec->catfile( $tmp, '.github', 'workflows', 'build-openbsd.yml' );
     my $openbsd_source = read_fixture_file($openbsd);
@@ -725,29 +773,27 @@ qr/worker initialization diagnostic|unsupported crash debugger line|missing boun
     {
         my ( $before, $after ) = @{$boundary};
         my $candidate = $openbsd_source;
-        my $changed   = $candidate =~ s/\Q$before\E/$after/;
+        my $changed   = $candidate =~ s/\Q$before\E/$after/x;
         ok( $changed, 'OpenBSD mutation changes an actual copyback boundary' );
         write_file( $openbsd, $candidate );
         ( $code, $out ) = run_checker($checker);
         is( $code, 1, 'OpenBSD command failure must retain host evidence' );
         like(
             $out,
-            qr/OpenBSD failure copyback/,
+            qr/OpenBSD[ ]failure[ ]copyback/x,
             'OpenBSD diagnostic identifies the lost copyback contract'
         );
     }
     my $without_upload = $openbsd_source;
-    my $removed_upload = $without_upload =~ s/^[ \t]*build[.]log[ \t]*\n//m;
+    my $removed_upload = $without_upload =~ s/^[ \t]*build[.]log[ \t]*\n//mx;
     ok( $removed_upload, 'OpenBSD mutation removes upload entry only' );
     write_file( $openbsd, $without_upload );
     ( $code, $out ) = run_checker($checker);
     is( $code, 1,
         'OpenBSD build capture alone cannot satisfy artifact upload' );
-    like(
-        $out,
-        qr/OpenBSD failure copyback missing: upload build[.]log/,
-        'OpenBSD upload diagnostic is independent of command capture'
-    );
+    my $openbsd_upload = q{OpenBSD failure copyback missing: upload build.log};
+    like( $out, qr/\Q$openbsd_upload\E/x,
+        'OpenBSD upload diagnostic is independent of command capture' );
 
     for my $entry (
         [ 'Run OpenBSD non-root credential checks', 'provision_credentials' ],
@@ -766,31 +812,35 @@ qr/worker initialization diagnostic|unsupported crash debugger line|missing boun
           . '        if: ${{ !cancelled() && steps.'
           . $dependency
           . ".outcome == 'success' }}\n";
-        my $changed = $candidate =~ s/\Q$gate\E/$header/;
+        my $changed = $candidate =~ s/\Q$gate\E/$header/x;
         ok( $changed, 'OpenBSD mutation removes one independent phase gate' );
         write_file( $openbsd, $candidate );
         ( $code, $out ) = run_checker($checker);
         is( $code, 1, 'OpenBSD phase must survive a sibling failure' );
         like(
             $out,
-            qr/OpenBSD failure copyback missing: \Q$name\E/,
+            qr/OpenBSD[ ]failure[ ]copyback[ ]missing:[ ]\Q$name\E/x,
             'OpenBSD phase diagnostic identifies the missing gate'
         );
     }
     my $action_run = $openbsd_source;
-    my $added_run  = $action_run =~ s{(            pkg_add [^\n]+\n)}
-      {$1 . "          run: |\n            exit 0\n"}e;
+    my $added_run  = $action_run =~ s{([ ]{12}pkg_add[ ][^\n]+\n)}
+      {$1 . "          run: |\n            exit 0\n"}ex;
     ok( $added_run, 'OpenBSD mutation inserts an action run input' );
     write_file( $openbsd, $action_run );
     ( $code, $out ) = run_checker($checker);
     is( $code, 1,
         'OpenBSD build must use the failure-preserving custom shell' );
-    like(
-        $out,
-        qr/OpenBSD failure copyback forbids the action run input/,
-        'OpenBSD action run diagnostic retains the known failure cause'
-    );
+    my $openbsd_run = q{OpenBSD failure copyback forbids the action run input};
+    like( $out, qr/\Q$openbsd_run\E/x,
+        'OpenBSD action run diagnostic retains the known failure cause' );
     write_file( $openbsd, $openbsd_source );
+    return;
+}
+
+sub crypto_workflow_fixtures {
+    my ( $tmp, $checker ) = @_;
+    my ( $code, $out );
     my $crypto =
       File::Spec->catfile( $tmp, '.github', 'workflows', 'crypto-tsan.yml' );
     my $crypto_source = read_fixture_file($crypto);
@@ -828,7 +878,7 @@ qr/worker initialization diagnostic|unsupported crash debugger line|missing boun
           index( $crypto_source, $before ) >= 0 ? $crypto : $crypto_action;
         my $candidate =
           $target eq $crypto ? $crypto_source : $crypto_action_source;
-        my $changed = $candidate =~ s/\Q$before\E/$after/;
+        my $changed = $candidate =~ s/\Q$before\E/$after/x;
         ok( $changed, 'crypto diagnostic mutation changes a real boundary' );
         write_file( $target, $candidate );
         ( $code, $out ) = run_checker($checker);
@@ -836,19 +886,19 @@ qr/worker initialization diagnostic|unsupported crash debugger line|missing boun
             'crypto diagnostic requires pinned complete instrumentation' );
         like(
             $out,
-            qr/missing instrumented crypto boundary/,
+            qr/missing[ ]instrumented[ ]crypto[ ]boundary/x,
             'crypto diagnostic reports its missing contract'
         );
     }
     write_file( $crypto_action, $crypto_action_source );
     my $suppressed = $crypto_source;
-    $suppressed =~ s/halt_on_error=1/halt_on_error=0/;
+    $suppressed =~ s/halt_on_error=1/halt_on_error=0/x;
     write_file( $crypto, $suppressed );
     ( $code, $out ) = run_checker($checker);
     is( $code, 1, 'crypto diagnostic cannot silence sanitizer failures' );
     like(
         $out,
-        qr/sanitizer suppressions are forbidden/,
+        qr/sanitizer[ ]suppressions[ ]are[ ]forbidden/x,
         'crypto diagnostic keeps sanitizer findings actionable'
     );
     write_file( $crypto, $crypto_source );
@@ -863,7 +913,7 @@ qr/worker initialization diagnostic|unsupported crash debugger line|missing boun
       )
     {
         my $incomplete = $macro_source;
-        my $changed    = $incomplete =~ s/\Q$required\E/missing-context/;
+        my $changed    = $incomplete =~ s/\Q$required\E/missing-context/x;
         ok( $changed, 'macro patch mutation changes actual context' );
         write_file( $macro_patch, $incomplete );
         ( $code, $out ) = run_checker($checker);
@@ -871,11 +921,17 @@ qr/worker initialization diagnostic|unsupported crash debugger line|missing boun
             'OpenSSL adaptation requires guard, context and provenance' );
         like(
             $out,
-            qr/incomplete upstream macro patch/,
+            qr/incomplete[ ]upstream[ ]macro[ ]patch/x,
             'OpenSSL adaptation reports missing source context'
         );
     }
     write_file( $macro_patch, $macro_source );
+    return;
+}
+
+sub validation_workflow_fixtures {
+    my ( $tmp, $checker ) = @_;
+    my ( $code, $out );
     my $validation =
       File::Spec->catfile( $tmp, '.github', 'workflows', 'validation.yml' );
     open my $validation_fh, '<', $validation
@@ -889,7 +945,7 @@ qr/worker initialization diagnostic|unsupported crash debugger line|missing boun
     {
         my $candidate = $validation_source;
         ok(
-            $candidate =~ s/\Q$timer_contract\E/missing-timer-contract.cmake/,
+            $candidate =~ s/\Q$timer_contract\E/missing-timer-contract.cmake/x,
             'timer workflow mutation changes the actual command'
         );
         write_file( $validation, $candidate );
@@ -897,7 +953,7 @@ qr/worker initialization diagnostic|unsupported crash debugger line|missing boun
         is( $code, 1, 'timer policy and mutations must run independently' );
         like(
             $out,
-            qr/missing independent timer API contract/,
+            qr/missing[ ]independent[ ]timer[ ]API[ ]contract/x,
             'missing early timer guard is diagnosed'
         );
     }
@@ -917,15 +973,17 @@ qr/worker initialization diagnostic|unsupported crash debugger line|missing boun
     {
         my ( $before, $after ) = @{$boundary};
         my $candidate = $validation_source;
-        ok( $candidate =~ s/\Q$before\E/$after/,
-            'TSan matrix mutation changes a real boundary' );
+        ok(
+            $candidate =~ s/\Q$before\E/$after/x,
+            'TSan matrix mutation changes a real boundary'
+        );
         write_file( $validation, $candidate );
         ( $code, $out ) = run_checker($checker);
         is( $code, 1,
             'TSan matrix must select and retain instrumented crypto' );
         like(
             $out,
-            qr/shared TSan crypto boundary/,
+            qr/shared[ ]TSan[ ]crypto[ ]boundary/x,
             'TSan matrix guard identifies its boundary'
         );
     }
@@ -956,7 +1014,7 @@ qr/worker initialization diagnostic|unsupported crash debugger line|missing boun
       )
     {
         my $candidate = $validation_source;
-        my $changed   = $candidate =~ s/\Q$missing\E/missing-build-evidence/g;
+        my $changed   = $candidate =~ s/\Q$missing\E/missing-build-evidence/gx;
         ok( $changed,
             'sanitizer mutation removes an actual evidence boundary' );
         write_file( $validation, $candidate );
@@ -964,20 +1022,20 @@ qr/worker initialization diagnostic|unsupported crash debugger line|missing boun
         is( $code, 1, 'sanitizer build failure must preserve diagnostics' );
         like(
             $out,
-            qr/sanitizer build evidence missing/,
+            qr/sanitizer[ ]build[ ]evidence[ ]missing/x,
             'sanitizer capture diagnostic'
         );
     }
     for my $log_name ( 'sanitizer-configure.log', 'sanitizer-build.log' ) {
         my $candidate = $validation_source;
-        my $changed   = $candidate =~ s/^[ \t]*\Q$log_name\E[ \t]*\n//m;
+        my $changed   = $candidate =~ s/^[ \t]*\Q$log_name\E[ \t]*\n//mx;
         ok( $changed, 'sanitizer upload mutation preserves tee capture' );
         write_file( $validation, $candidate );
         ( $code, $out ) = run_checker($checker);
         is( $code, 1, 'sanitizer capture requires artifact publication' );
         like(
             $out,
-            qr/sanitizer build evidence missing: upload/,
+            qr/sanitizer[ ]build[ ]evidence[ ]missing:[ ]upload/x,
             'sanitizer upload diagnostic'
         );
     }
@@ -986,9 +1044,10 @@ qr/worker initialization diagnostic|unsupported crash debugger line|missing boun
         [ 'Upload sanitizer test logs',           'if: always()' ] )
     {
         my ( $step, $operand ) = @{$boundary};
-        my $candidate = $validation_source;
-        my $changed   = $candidate =~
-s{(^[ \t]*-[ ]name:[ ]\Q$step\E\n(?:(?!^[ \t]*-[ ]name:).)*?)\Q$operand\E}{$1 . 'missing-failure-boundary'}mse;
+        my $candidate    = $validation_source;
+        my $step_heading = qr/ ^ [ \t]* - [ ] name: /mx;
+        my $changed      = $candidate =~
+s{($step_heading[ ]\Q$step\E\n(?:(?!$step_heading).)*?)\Q$operand\E}{$1 . 'missing-failure-boundary'}msex;
         ok( $changed, 'sanitizer failure-boundary mutation is effective' );
         write_file( $validation, $candidate );
         ( $code, $out ) = run_checker($checker);
@@ -996,24 +1055,30 @@ s{(^[ \t]*-[ ]name:[ ]\Q$step\E\n(?:(?!^[ \t]*-[ ]name:).)*?)\Q$operand\E}{$1 . 
             'sanitizer pipeline and unconditional upload are required' );
         like(
             $out,
-            qr/sanitizer build evidence missing/,
+            qr/sanitizer[ ]build[ ]evidence[ ]missing/x,
             'sanitizer failure-boundary diagnostic'
         );
     }
     write_file( $validation, $validation_source );
     my $newline_inventory = $validation_source;
-    $newline_inventory =~ s/git ls-files -z/git ls-files/g;
+    $newline_inventory =~ s/git[ ]ls-files[ ]-z/git ls-files/gx;
     write_file( $validation, $newline_inventory );
     ( $code, $out ) = run_checker($checker);
     is( $code, 1,
         'workflow checker rejects newline-delimited source inventory' );
     like(
         $out,
-        qr/NUL-delimited Perl inventory missing/,
+        qr/NUL-delimited[ ]Perl[ ]inventory[ ]missing/x,
         'inventory diagnostic requires filename-safe source handling'
     );
     write_file( $validation, $validation_source );
 
+    return;
+}
+
+sub linux_build_action_fixtures {
+    my ( $tmp, $checker ) = @_;
+    my ( $code, $out );
     my $linux_action = File::Spec->catfile( $tmp, '.github', 'actions',
         'linux-openssl-build', 'action.yml' );
     my $linux_source = read_fixture_file($linux_action);
@@ -1023,14 +1088,14 @@ s{(^[ \t]*-[ ]name:[ ]\Q$step\E\n(?:(?!^[ \t]*-[ ]name:).)*?)\Q$operand\E}{$1 . 
       )
     {
         my $candidate = $linux_source;
-        my $changed   = $candidate =~ s/\Q$missing\E/missing-strict-warnings/g;
+        my $changed   = $candidate =~ s/\Q$missing\E/missing-strict-warnings/gx;
         ok( $changed, 'strict warnings mutation removes an actual boundary' );
         write_file( $linux_action, $candidate );
         ( $code, $out ) = run_checker($checker);
         is( $code, 1, 'strict warnings must reach environment and CMake' );
         like(
             $out,
-            qr/strict warnings chain missing/,
+            qr/strict[ ]warnings[ ]chain[ ]missing/x,
             'strict chain diagnostic'
         );
     }
@@ -1043,7 +1108,7 @@ s{(^[ \t]*-[ ]name:[ ]\Q$step\E\n(?:(?!^[ \t]*-[ ]name:).)*?)\Q$operand\E}{$1 . 
       . "\n";
     my $blocked_focus = $linux_source;
     ok(
-        $blocked_focus =~ s/\Q$focused_gate\E/$focused_header/,
+        $blocked_focus =~ s/\Q$focused_gate\E/$focused_header/x,
         'Linux mutation removes the focused test prerequisite gate'
     );
     write_file( $linux_action, $blocked_focus );
@@ -1051,7 +1116,7 @@ s{(^[ \t]*-[ ]name:[ ]\Q$step\E\n(?:(?!^[ \t]*-[ ]name:).)*?)\Q$operand\E}{$1 . 
     is( $code, 1, 'Linux focused tests must survive broad suite failure' );
     like(
         $out,
-        qr/independent native evidence missing: \Q$focused_step\E/,
+        qr/independent[ ]native[ ]evidence[ ]missing:[ ]\Q$focused_step\E/x,
         'Linux prerequisite diagnostic identifies the affected phase'
     );
     write_file( $linux_action, $linux_source );
@@ -1064,14 +1129,14 @@ s{(^[ \t]*-[ ]name:[ ]\Q$step\E\n(?:(?!^[ \t]*-[ ]name:).)*?)\Q$operand\E}{$1 . 
 q{warnings_as_errors: ${{ inputs.warnings_as_errors && 'ON' || 'OFF' }}};
         my $candidate = $original;
         my $changed =
-          $candidate =~ s/\Q$forwarding\E/missing-strict-forwarding/g;
+          $candidate =~ s/\Q$forwarding\E/missing-strict-forwarding/gx;
         ok( $changed, 'each branch actually forwards the dispatch choice' );
         write_file( $workflow, $candidate );
         ( $code, $out ) = run_checker($checker);
         is( $code, 1, 'dropped branch forwarding fails' );
         like(
             $out,
-            qr/strict warnings forwarding missing/,
+            qr/strict[ ]warnings[ ]forwarding[ ]missing/x,
             'forwarding diagnostic'
         );
         write_file( $workflow, $original );
@@ -1084,39 +1149,45 @@ q{warnings_as_errors: ${{ inputs.warnings_as_errors && 'ON' || 'OFF' }}};
       )
     {
         my $candidate = $linux_source;
-        my $changed   = $candidate =~ s/\Q$missing\E/missing-build-evidence/g;
+        my $changed   = $candidate =~ s/\Q$missing\E/missing-build-evidence/gx;
         ok( $changed, 'negative fixture removes an actual evidence boundary' );
         write_file( $linux_action, $candidate );
         ( $code, $out ) = run_checker($checker);
         is( $code, 1, 'workflow checker rejects lost compiler evidence' );
         like(
             $out,
-            qr/build evidence missing/,
+            qr/build[ ]evidence[ ]missing/x,
             'evidence diagnostic identifies capture or upload boundary'
         );
     }
     write_file( $linux_action, $linux_source );
     for my $log_name ( 'configure.log', 'build.log' ) {
         my $candidate = $linux_source;
-        my $changed   = $candidate =~ s/^[ \t]*\Q$log_name\E[ \t]*\n//m;
+        my $changed   = $candidate =~ s/^[ \t]*\Q$log_name\E[ \t]*\n//mx;
         ok( $changed, 'negative fixture removes upload entry only' );
         write_file( $linux_action, $candidate );
         ( $code, $out ) = run_checker($checker);
         is( $code, 1, 'capture alone cannot satisfy artifact preservation' );
         like(
             $out,
-            qr/build evidence missing: upload/,
+            qr/build[ ]evidence[ ]missing:[ ]upload/x,
             'upload diagnostic is independent of pipeline capture'
         );
     }
     my $without_pipefail = $linux_source;
-    $without_pipefail =~ s/set -euo pipefail/set -eu/g;
+    $without_pipefail =~ s/set[ ]-euo[ ]pipefail/set -eu/gx;
     write_file( $linux_action, $without_pipefail );
     ( $code, $out ) = run_checker($checker);
     is( $code, 1, 'tee must not hide a failed configure or compiler' );
-    like( $out, qr/pipeline failure propagation/, 'pipefail diagnostic' );
+    like( $out, qr/pipeline[ ]failure[ ]propagation/x, 'pipefail diagnostic' );
     write_file( $linux_action, $linux_source );
 
+    return;
+}
+
+sub agent_maintenance_workflow_fixtures {
+    my ( $tmp, $checker ) = @_;
+    my ( $code, $out );
     my $maintenance = File::Spec->catfile( $tmp, '.github', 'workflows',
         'agent-maintenance.yml' );
     my $maintenance_source = read_fixture_file($maintenance);
@@ -1126,14 +1197,14 @@ q{warnings_as_errors: ${{ inputs.warnings_as_errors && 'ON' || 'OFF' }}};
       )
     {
         my $candidate = $maintenance_source;
-        $candidate =~ s/\Q$missing\E/echo missing-contract/g;
+        $candidate =~ s/\Q$missing\E/echo missing-contract/gx;
         write_file( $maintenance, $candidate );
         ( $code, $out ) = run_checker($checker);
         is( $code, 1,
             'workflow checker rejects missing Perl knowledge coverage' );
         like(
             $out,
-            qr/Perl knowledge contract missing/,
+            qr/Perl[ ]knowledge[ ]contract[ ]missing/x,
             'missing Perl gate diagnostic identifies the contract'
         );
     }
@@ -1143,7 +1214,7 @@ q{warnings_as_errors: ${{ inputs.warnings_as_errors && 'ON' || 'OFF' }}};
     is( $code, 1, 'maintenance gate cannot reintroduce an alternate runtime' );
     like(
         $out,
-        qr/interpreter policy requires Perl/,
+        qr/interpreter[ ]policy[ ]requires[ ]Perl/x,
         'runtime rejection identifies the interpreter policy'
     );
     return;
@@ -1159,7 +1230,7 @@ sub read_fixture_file {
 workflow_crash_fixtures($root);
 
 # --- check-android-locales.pl plural categories -----------------------
-{
+sub android_locale_plural_fixtures {
     my $tmp     = tempdir( CLEANUP => 1 );
     my $android = File::Spec->catdir( $tmp,     'android' );
     my $res     = File::Spec->catdir( $android, 'app', 'src', 'main', 'res' );
@@ -1220,14 +1291,17 @@ workflow_crash_fixtures($root);
     is( $code, 0, 'locale checker accepts other-only Chinese plurals' );
 
     my $bare_chinese = $valid_filters;
-    ok( $bare_chinese =~ s/zh-rCN/zh/,
-        'mutated the Gradle resource qualifier' );
+    ok(
+        $bare_chinese =~ s/zh-rCN/zh/x,
+        'mutated the Gradle resource qualifier'
+    );
     write_file( $gradle, $bare_chinese );
     ( $code, $out ) = run_checker( $locale_checker, '--root', $android );
     is( $code, 1, 'locale checker rejects the bare Chinese filter' );
+    my $locale_order = qr/ en, \s+ es, \s+ ru, \s+ zh-rCN /x;
     like(
         $out,
-        qr/Gradle\s+localeFilters\s+must\s+be\s+en,\s+es,\s+ru,\s+zh-rCN/x,
+        qr/Gradle\s+localeFilters\s+must\s+be\s+ $locale_order /x,
         'Gradle resource qualifier failure is explicit'
     );
     write_file( $gradle, $valid_filters );
@@ -1241,7 +1315,7 @@ workflow_crash_fixtures($root);
     is( $code, 1, 'locale checker rejects Chinese catalog missing other' );
     like(
         $out,
-        qr/missing zh-CN plurals probe quantity=other/,
+        qr/missing[ ]zh-CN[ ]plurals[ ]probe[ ]quantity=other/x,
         'Chinese plural category failure is explicit'
     );
 
@@ -1254,13 +1328,15 @@ workflow_crash_fixtures($root);
     is( $code, 1, 'locale checker rejects unused Chinese one quantity' );
     like(
         $out,
-        qr/unsupported zh-CN plurals probe quantity=one/,
+        qr/unsupported[ ]zh-CN[ ]plurals[ ]probe[ ]quantity=one/x,
         'unused Chinese quantity diagnostic is explicit'
     );
+    return;
 }
+android_locale_plural_fixtures();
 
 # --- check-doc-links.pl ----------------------------------------------
-{
+sub documentation_link_fixtures {
     my $tmp  = tempdir( CLEANUP => 1 );
     my $docs = File::Spec->catdir( $tmp, 'docs' );
     write_file(
@@ -1271,17 +1347,19 @@ workflow_crash_fixtures($root);
     is( $code, 1, 'doc link checker rejects a missing relative target' );
     like(
         $out,
-        qr/Missing relative documentation links/,
+        qr/Missing[ ]relative[ ]documentation[ ]links/x,
         'missing-link diagnostic is emitted'
     );
 
     write_file( File::Spec->catfile( $docs, 'missing.md' ), "# Present\n" );
     ( $code, $out ) = run_checker( $link_checker, $docs );
     is( $code, 0, 'doc link checker accepts the repaired tree' );
+    return;
 }
+documentation_link_fixtures();
 
 # --- check-doc-nav.pl ------------------------------------------------
-{
+sub documentation_navigation_fixtures {
     my $tmp  = tempdir( CLEANUP => 1 );
     my $docs = File::Spec->catdir( $tmp, 'docs' );
     write_file( File::Spec->catfile( $docs, 'mkdocs.yml' ),
@@ -1293,7 +1371,11 @@ workflow_crash_fixtures($root);
 
     my ( $code, $out ) = run_checker( $nav_checker, $tmp );
     is( $code, 1, 'doc navigation checker rejects an unlisted page' );
-    like( $out, qr/unlisted Markdown/, 'unlisted-page diagnostic is emitted' );
+    like(
+        $out,
+        qr/unlisted[ ]Markdown/x,
+        'unlisted-page diagnostic is emitted'
+    );
 
     write_file(
         File::Spec->catfile( $docs, 'mkdocs.yml' ),
@@ -1301,10 +1383,12 @@ workflow_crash_fixtures($root);
     );
     ( $code, $out ) = run_checker( $nav_checker, $tmp );
     is( $code, 0, 'doc navigation checker accepts a listed page' );
+    return;
 }
+documentation_navigation_fixtures();
 
 # --- check-android-jni-symbols.pl -------------------------------------
-{
+sub android_jni_symbol_fixtures {
     my $tmp  = tempdir( CLEANUP => 1 );
     my $java = File::Spec->catfile(
         $tmp,     'android', 'app', 'src',
@@ -1337,7 +1421,7 @@ workflow_crash_fixtures($root);
     for my $parameter ( 'jobject', 'jclass, jint' ) {
         my $candidate = $valid_native;
         ok(
-            $candidate =~ s/\bjclass\b/$parameter/,
+            $candidate =~ s/\bjclass\b/$parameter/x,
             'fixture changes the native ABI'
         );
         write_file( $native, $candidate );
@@ -1345,7 +1429,7 @@ workflow_crash_fixtures($root);
         is( $code, 1, 'JNI checker rejects receiver or parameter drift' );
         like(
             $out,
-            qr/C\+\+ definition signature mismatch/,
+            qr/C\+\+[ ]definition[ ]signature[ ]mismatch/x,
             'diagnostic identifies the mismatched definition'
         );
     }
@@ -1355,7 +1439,7 @@ workflow_crash_fixtures($root);
     is( $code, 1, 'JNI checker rejects a missing definition' );
     like(
         $out,
-        qr/missing C\+\+ definition/,
+        qr/missing[ ]C\+\+[ ]definition/x,
         'missing-definition diagnostic is emitted'
     );
 
@@ -1367,13 +1451,15 @@ workflow_crash_fixtures($root);
     is( $code, 1, 'JNI checker rejects an extra definition' );
     like(
         $out,
-        qr/has no Java native declaration/,
+        qr/has[ ]no[ ]Java[ ]native[ ]declaration/x,
         'extra-definition diagnostic is emitted'
     );
+    return;
 }
+android_jni_symbol_fixtures();
 
 # --- check-android-javadoc.pl -----------------------------------------
-{
+sub android_javadoc_fixtures {
     my $tmp     = tempdir( CLEANUP => 1 );
     my $android = File::Spec->catdir( $tmp, 'android' );
     my $java    = File::Spec->catfile(
@@ -1386,7 +1472,7 @@ workflow_crash_fixtures($root);
     my ( $empty_code, $empty_out ) =
       run_checker( $javadoc_checker, '--root', $android );
     is( $empty_code, 0, 'empty Java input has no Javadoc defects' );
-    unlike( $empty_out, qr/uninitialized/, 'empty input is handled as EOF' );
+    unlike( $empty_out, qr/uninitialized/x, 'empty input is handled as EOF' );
 
     # The manual Gradle Javadoc lane uses -Xdoclint:all -Werror. It
     # rejects raw placeholders, JDK-internal block tags, inline tags
@@ -1405,7 +1491,7 @@ workflow_crash_fixtures($root);
     is( $code, 1, 'Javadoc checker rejects a raw angle-bracket placeholder' );
     like(
         $out,
-        qr/<tunnel> is parsed as HTML/,
+        qr/<tunnel>[ ]is[ ]parsed[ ]as[ ]HTML/x,
         'placeholder diagnostic names the tag'
     );
 
@@ -1438,7 +1524,7 @@ workflow_crash_fixtures($root);
     is( $code, 1, 'Javadoc checker rejects an unregistered block tag' );
     like(
         $out,
-        qr/unknown tag \@implNote/,
+        qr/unknown[ ]tag[ ]\@implNote/x,
         'unregistered-tag diagnostic names the tag'
     );
 
@@ -1457,10 +1543,12 @@ workflow_crash_fixtures($root);
     is( $code, 1, 'Javadoc checker rejects a mismatched @param name' );
     like(
         $out,
-        qr/\@param data is not a parameter/,
+        qr/\@param[ ]data[ ]is[ ]not[ ]a[ ]parameter/x,
         'mismatched-parameter diagnostic is emitted'
     );
+    return;
 }
+android_javadoc_fixtures();
 
 # --- Doxygen partial parameter documentation -------------------------
 # The source-docs lane fails on a documented function that names some
@@ -1468,7 +1556,7 @@ workflow_crash_fixtures($root);
 #
 # WARN_NO_PARAMDOC is off, so a block with no @param at all is
 # intentionally accepted.
-{
+sub doxygen_partial_parameter_fixtures {
     my $tmp    = tempdir( CLEANUP => 1 );
     my $header = File::Spec->catfile( $tmp, 'libi2pd', 'probe.h' );
     write_file( $header,
@@ -1484,7 +1572,7 @@ workflow_crash_fixtures($root);
     is( $code, 1, 'Doxygen checker rejects partial parameter docs' );
     like(
         $out,
-        qr/undocumented parameter\(s\): key, encoded/,
+        qr/undocumented[ ]parameter\(s\):[ ]key,[ ]encoded/x,
         'missing-parameter diagnostic names the parameters'
     );
 
@@ -1523,7 +1611,7 @@ void Probe(JNIEnv * env, jclass, const ns::Widget missing,
 CPP
     ( $code, $out ) = run_checker( $doxygen_checker, '--root', $tmp );
     is( $code, 1, 'named operands still require documentation' );
-    like( $out, qr/missing|count|callback/,
+    like( $out, qr/missing|count|callback/x,
         'named parameter diagnostic remains' );
 
     # A name missing from the declaration is the inverse defect: Doxygen
@@ -1547,7 +1635,7 @@ CPP
         'Doxygen checker rejects a documented name not in the declaration' );
     like(
         $out,
-        qr/not in the declaration: key/,
+        qr/not[ ]in[ ]the[ ]declaration:[ ]key/x,
         'undeclared-parameter diagnostic names the parameter'
     );
 
@@ -1561,7 +1649,9 @@ CPP
           . "};\n" );
     ( $code, $out ) = run_checker( $doxygen_checker, '--root', $tmp );
     is( $code, 0, 'Doxygen checker accepts an array parameter identifier' );
+    return;
 }
+doxygen_partial_parameter_fixtures();
 
 # --- Doxygen duplicated parameter documentation ----------------------
 # Doxygen merges member declaration and definition documentation. A
@@ -1569,7 +1659,7 @@ CPP
 # source-docs lane.
 #
 # The same name twice in one block is a defect too.
-{
+sub doxygen_duplicate_parameter_fixtures {
     my $tmp    = tempdir( CLEANUP => 1 );
     my $header = File::Spec->catfile( $tmp, 'libi2pd', 'probe.h' );
     my $source = File::Spec->catfile( $tmp, 'libi2pd', 'probe.cpp' );
@@ -1596,12 +1686,12 @@ CPP
         'Doxygen checker rejects a definition repeating header @param docs' );
     like(
         $out,
-        qr/duplicate \@param documentation for Load/,
+        qr/duplicate[ ]\@param[ ]documentation[ ]for[ ]Load/x,
         'declaration/definition duplicate names the function'
     );
     like(
         $out,
-        qr/probe\.h:\d+ already documents it/,
+        qr/probe\.h:\d+[ ]already[ ]documents[ ]it/x,
         'duplicate diagnostic points at the declaration'
     );
 
@@ -1650,12 +1740,13 @@ CPP
     ( $code, $out ) = run_checker( $doxygen_checker, '--root', $tmp );
     is( $code, 1,
         'Doxygen checker rejects the same @param name twice in one block' );
-    like(
-        $out,
-        qr/duplicate \@param 'key' in one documentation block/,
-        'in-block duplicate names the parameter'
-    );
+    my $repeated_parameter =
+      q{duplicate @param 'key' in one documentation block};
+    like( $out, qr/\Q$repeated_parameter\E/x,
+        'in-block duplicate names the parameter' );
+    return;
 }
+doxygen_duplicate_parameter_fixtures();
 
 # --- Doxygen unresolved cross-references ------------------------------
 # Doxygen reports an unknown \ref target as a doc error. WARN_AS_ERROR
@@ -1663,7 +1754,7 @@ CPP
 #
 # A type, namespace, macro or callable resolves. A generic data-member
 # name such as `mutex` does not and must stay in backticks.
-{
+sub doxygen_reference_fixtures {
     my $tmp    = tempdir( CLEANUP => 1 );
     my $header = File::Spec->catfile( $tmp, 'libi2pd', 'probe.h' );
 
@@ -1677,7 +1768,7 @@ CPP
     is( $code, 1, 'Doxygen checker rejects an unresolved \@ref target' );
     like(
         $out,
-        qr/unresolved \@ref target 'mutex'/,
+        qr/unresolved[ ]\@ref[ ]target[ ]'mutex'/x,
         'unresolved-reference diagnostic names the target'
     );
 
@@ -1690,14 +1781,16 @@ CPP
           . "};\n" );
     ( $code, $out ) = run_checker( $doxygen_checker, '--root', $tmp );
     is( $code, 0, 'Doxygen checker accepts type and callable references' );
+    return;
 }
+doxygen_reference_fixtures();
 
 # --- Doxygen command balance and Javadoc inline tags ------------------
 # `{\@code x}` is Javadoc syntax. Doxygen treats `@code` as an opening
 # block and aborts at the end of the comment.
 #
 # A real @code/@endcode pair passes; unclosed @verbatim is rejected.
-{
+sub doxygen_block_command_fixtures {
     my $tmp    = tempdir( CLEANUP => 1 );
     my $header = File::Spec->catfile( $tmp, 'libi2pd', 'probe.h' );
 
@@ -1710,7 +1803,7 @@ CPP
     is( $code, 1, 'Doxygen checker rejects a Javadoc inline tag' );
     like(
         $out,
-        qr/Javadoc inline tag in a C\/C\+\+ comment/,
+        qr/Javadoc[ ]inline[ ]tag[ ]in[ ]a[ ]C\/C\+\+[ ]comment/x,
         'inline-tag diagnostic names the correct replacement'
     );
 
@@ -1735,10 +1828,12 @@ CPP
     is( $code, 1, 'Doxygen checker rejects an unclosed verbatim block' );
     like(
         $out,
-        qr/unbalanced \@verbatim/,
+        qr/unbalanced[ ]\@verbatim/x,
         'unbalanced-verbatim diagnostic names the block'
     );
+    return;
 }
+doxygen_block_command_fixtures();
 
 # --- CRLF catalogs and nested documentation paths ---------------------
 # A CRLF checkout is the failure mode a Windows runner without the
@@ -1746,7 +1841,7 @@ CPP
 #
 # A nested documentation page is where a native separator leaks into a
 # repository-relative comparison.
-{
+sub native_locale_path_fixtures {
     my $tmp     = tempdir( CLEANUP => 1 );
     my $android = File::Spec->catdir( $tmp,     'android' );
     my $res     = File::Spec->catdir( $android, 'app', 'src', 'main', 'res' );
@@ -1819,11 +1914,13 @@ CPP
     is( $code, 1, 'locale checker rejects a CRLF catalog' );
     like(
         $out,
-        qr/CRLF line ending in .*strings\.xml:1/,
+        qr/CRLF[ ]line[ ]ending[ ]in[ ].*strings\.xml:1/x,
         'CRLF diagnostic names the file and line'
     );
-    like( $out, qr{\Q$dirs{ru}\E}, 'CRLF diagnostic names the locale' );
+    like( $out, qr{\Q$dirs{ru}\E}x, 'CRLF diagnostic names the locale' );
+    return;
 }
+native_locale_path_fixtures();
 
 # --- i18n catalog escape decoding -------------------------------------
 # One left-to-right pass keeps a literal backslash-n key, a key with a
@@ -1833,7 +1930,7 @@ CPP
 # The previous ordered substitutions decoded the first form into a
 # backslash-newline and merged it with the third. This fixture fails on
 # that implementation and still rejects a duplicate.
-{
+sub native_duplicate_key_fixtures {
     my $tmp                   = tempdir( CLEANUP => 1 );
     my $backslash             = '\\';
     my $escaped_key           = '"probe' . ( $backslash x 2 ) . 'nkey"';
@@ -1857,13 +1954,13 @@ CPP
         'tui/TerminalUnix.cpp', 'tui/TerminalWin32.cpp'
       )
     {
-        write_file( File::Spec->catfile( $tmp, split m{/}, $source ),
+        write_file( File::Spec->catfile( $tmp, split m{/}x, $source ),
             "// no translatable literal\n" );
     }
 
     my ( $code, $out ) = run_checker( $i18n_checker, '--root', $tmp );
     is( $code, 0, 'i18n checker keeps escaped and newline keys distinct' );
-    like( $out, qr/3 keys/, 'i18n checker counts all three distinct keys' );
+    like( $out, qr/3[ ]keys/x, 'i18n checker counts all three distinct keys' );
 
     write_file(
         File::Spec->catfile( $tmp, 'i18n', 'Spanish.cpp' ),
@@ -1873,11 +1970,13 @@ CPP
     );
     ( $code, $out ) = run_checker( $i18n_checker, '--root', $tmp );
     is( $code, 1, 'i18n checker still rejects a duplicate key' );
-    like( $out, qr/duplicate key/, 'duplicate-key diagnostic is emitted' );
+    like( $out, qr/duplicate[ ]key/x, 'duplicate-key diagnostic is emitted' );
+    return;
 }
+native_duplicate_key_fixtures();
 
 # --- native printf operand contracts ---------------------------------
-{
+sub native_printf_operand_fixtures {
     my $tmp = tempdir( CLEANUP => 1 );
     for my $source (
         'tui/main.cpp',         'libi2pd_client/HTTPProxy.cpp',
@@ -1885,7 +1984,7 @@ CPP
         'tui/TerminalUnix.cpp', 'tui/TerminalWin32.cpp'
       )
     {
-        write_file( File::Spec->catfile( $tmp, split m{/}, $source ),
+        write_file( File::Spec->catfile( $tmp, split m{/}x, $source ),
             "// no translatable literal\n" );
     }
     my $catalog = sub {
@@ -1933,7 +2032,7 @@ CPP
         is( $code, $expected, "native printf contract: $label" );
         like(
             $out,
-            qr/placeholder mismatch|printf|parity OK|trailing space/,
+            qr/placeholder[ ]mismatch|printf|parity[ ]OK|trailing[ ]space/x,
             'native printf contract emits a relevant diagnostic'
         );
     }
@@ -1952,7 +2051,7 @@ CPP
     is( $code, 1, 'plural forms preserve their source printf operand types' );
     like(
         $out,
-        qr/plural placeholder mismatch/,
+        qr/plural[ ]placeholder[ ]mismatch/x,
         'plural operand diagnostic identifies the contract'
     );
 
@@ -1964,7 +2063,7 @@ CPP
     for my $name ( sort keys %forms ) {
         my $source = $catalog->( 'Status', 'Status', $forms{$name} );
         my $entry  = '    { "%d files", { ' . $forms{$name} . " } },\n";
-        $source =~ s/};\n$/$entry};\n/
+        $source =~ s/};\n$/$entry};\n/x
           or BAIL_OUT('missing plural fixture boundary');
         write_file( File::Spec->catfile( $tmp, 'i18n', $name ), $source );
     }
@@ -1972,7 +2071,7 @@ CPP
     is( $code, 1, 'duplicate plural keys cannot silently replace forms' );
     like(
         $out,
-        qr/duplicate plural key/,
+        qr/duplicate[ ]plural[ ]key/x,
         'duplicate plural diagnostic is explicit'
     );
 
@@ -2004,16 +2103,16 @@ CPP
                 $catalog->( 'Status', 'Status', $forms{$name} )
             );
         }
-        write_file( File::Spec->catfile( $tmp, split m{/}, $fixture->[0] ),
+        write_file( File::Spec->catfile( $tmp, split m{/}x, $fixture->[0] ),
             $fixture->[1] );
         ( $code, $out ) = run_checker( $i18n_checker, '--root', $tmp );
         is( $code, 1, 'trusted source prose requires a native catalog key' );
         like(
             $out,
-            qr/missing source literal/,
+            qr/missing[ ]source[ ]literal/x,
             'trusted-table harvesting names missing coverage'
         );
-        write_file( File::Spec->catfile( $tmp, split m{/}, $fixture->[0] ),
+        write_file( File::Spec->catfile( $tmp, split m{/}x, $fixture->[0] ),
             "// no translatable literal\n" );
     }
     write_file(
@@ -2022,10 +2121,15 @@ CPP
     );
     ( $code, $out ) = run_checker( $i18n_checker, '--root', $tmp );
     is( $code, 0, 'rendered operands remain outside trusted label harvesting' );
+    return;
 }
+native_printf_operand_fixtures();
 
 # --- Unicode Markdown anchors and strict input decoding ---------------
-{
+sub markdown_decoding_fixtures {
+    my $invalid_encoding = qr/ invalid [ ] (?: UTF-8 | percent [ ] escape ) /x;
+    my $decoding_error =
+      qr/ $invalid_encoding | NUL [ ] in [ ] local [ ] link /x;
     my $tmp  = tempdir( CLEANUP => 1 );
     my $docs = File::Spec->catdir( $tmp, 'docs' );
     my $page = File::Spec->catfile( $docs, 'page.md' );
@@ -2079,11 +2183,11 @@ CPP
     );
     ( $code, $out ) = run_checker( $link_checker, $docs );
     is( $code, 1, 'valid Unicode missing fragment keeps link-failure status' );
-    like( $out, qr/\Q$lower\E-missing/,
+    like( $out, qr/\Q$lower\E-missing/x,
         'missing fragment diagnostic renders UTF-8 bytes' );
     unlike(
         $out,
-        qr/Wide character/,
+        qr/Wide[ ]character/x,
         'Unicode diagnostics do not emit Perl encoding warnings'
     );
 
@@ -2092,11 +2196,8 @@ CPP
             "[invalid]($component)\n" );
         ( $code, $out ) = run_checker( $link_checker, $docs );
         is( $code, 1, 'malformed local URL component is rejected' );
-        like(
-            $out,
-            qr/invalid UTF-8|invalid percent escape|NUL in local link/,
-            'component decoding fails with a non-content diagnostic'
-        );
+        like( $out, $decoding_error,
+            'component decoding fails with a non-content diagnostic' );
     }
     write_file( File::Spec->catfile( $docs, 'index.md' ), "[page](page.md)\n" );
     write_file( $page, "# Invalid \xC3\x28\n" );
@@ -2104,7 +2205,7 @@ CPP
     isnt( $code, 0, 'malformed UTF-8 heading input is rejected' );
     like(
         $out,
-        qr/invalid UTF-8 in Markdown file/,
+        qr/invalid[ ]UTF-8[ ]in[ ]Markdown[ ]file/x,
         'malformed Markdown has an explicit encoding diagnostic'
     );
     write_file( $page, "# Present\n" );
@@ -2116,13 +2217,15 @@ CPP
     isnt( $code, 0, 'malformed UTF-8 link input is rejected' );
     like(
         $out,
-        qr/invalid UTF-8 in Markdown file/,
+        qr/invalid[ ]UTF-8[ ]in[ ]Markdown[ ]file/x,
         'link parsing uses the same strict decoder as anchor parsing'
     );
+    return;
 }
+markdown_decoding_fixtures();
 
 # --- nested documentation pages --------------------------------------
-{
+sub nested_documentation_link_fixtures {
     my $tmp  = tempdir( CLEANUP => 1 );
     my $docs = File::Spec->catdir( $tmp, 'docs' );
     write_file(
@@ -2149,7 +2252,7 @@ CPP
     is( $code, 1, 'doc link checker rejects a target above the repository' );
     like(
         $out,
-        qr/\(escapes repository\)/,
+        qr/\(escapes[ ]repository\)/x,
         'escape diagnostic is emitted for a parent-of-repository link'
     );
 
@@ -2163,7 +2266,7 @@ CPP
             'untraversable or missing contained target stays invalid' );
         unlike(
             $out,
-            qr/\(escapes repository\)/,
+            qr/\(escapes[ ]repository\)/x,
             'contained missing suffix is not classified as a repository escape'
         );
     }
@@ -2189,7 +2292,7 @@ CPP
         is( $code, 1, 'existing physical symlink target escapes repository' );
         like(
             $out,
-            qr/\(escapes repository\)/,
+            qr/\(escapes[ ]repository\)/x,
             'supported inline link reaches the containment checker'
         );
         for my $target ( 'jump/missing.md', 'jump/missing/../leaf.md',
@@ -2203,15 +2306,17 @@ CPP
             );
             like(
                 $out,
-                qr/\(escapes repository\)/,
+                qr/\(escapes[ ]repository\)/x,
 'missing-target containment follows symlinks before parent components'
             );
         }
     }
+    return;
 }
+nested_documentation_link_fixtures();
 
 # --- nested navigation pages -----------------------------------------
-{
+sub nested_documentation_navigation_fixtures {
     my $tmp  = tempdir( CLEANUP => 1 );
     my $docs = File::Spec->catdir( $tmp, 'docs' );
     write_file( File::Spec->catfile( $docs, 'mkdocs.yml' ),
@@ -2225,7 +2330,7 @@ CPP
     is( $code, 1, 'doc navigation checker rejects an unlisted nested page' );
     like(
         $out,
-        qr{unlisted Markdown: sub/page\.md},
+        qr{unlisted[ ]Markdown:[ ]sub/page\.md}x,
         'nested page is reported with / separators'
     );
 
@@ -2235,7 +2340,9 @@ CPP
     );
     ( $code, $out ) = run_checker( $nav_checker, $tmp );
     is( $code, 0, 'doc navigation checker accepts a listed nested page' );
+    return;
 }
+nested_documentation_navigation_fixtures();
 
 # --- check-vectors unexpected pass exit status ------------------------
 SKIP: {
@@ -2294,7 +2401,7 @@ SKIP: {
     is( $kind, 'exit', 'unexpected pass is a normal checker failure' );
     like(
         $out,
-        qr/UNEXPECTED-PASS \Q$case_id\E/,
+        qr/UNEXPECTED-PASS[ ]\Q$case_id\E/x,
         'unexpected pass diagnostic names the fixture'
     );
 
@@ -2310,14 +2417,14 @@ SKIP: {
         is( $kind, 'exit', 'checker reports the child failure normally' );
         like(
             $out,
-            qr/harness terminated by signal [0-9]+/,
+            qr/harness[ ]terminated[ ]by[ ]signal[ ][0-9]+/x,
             'checker retains the POSIX terminal cause'
         );
     }
 }
 
 # --- child wait status decoding --------------------------------------
-{
+sub child_wait_status_fixtures {
     for my $exit_code ( 0, 1, 2, 127, 255 ) {
         my ( $code, $kind, $detail ) =
           decode_wait_status( 17, 17, $exit_code << 8, 0 );
@@ -2359,7 +2466,9 @@ SKIP: {
             'run_checker distinguishes signal termination' );
         cmp_ok( $signal, '>', 0, 'signal number is retained for diagnostics' );
     }
+    return;
 }
+child_wait_status_fixtures();
 
 done_testing();
 

@@ -84,7 +84,7 @@ sub _read_http_request {
     # forever; 64 KiB is far more than a real request needs.
     while (1) {
         my $read = sysread( $socket, my $chunk, 4096 );
-        return unless defined $read && $read > 0;
+        return if !defined $read || $read <= 0;
         $buffer .= $chunk;
         $header_end = index( $buffer, "\r\n\r\n" );
         last   if $header_end >= 0;
@@ -93,13 +93,13 @@ sub _read_http_request {
 
     my $head     = substr( $buffer, 0, $header_end );
     my $body     = substr( $buffer, $header_end + 4 );
-    my ($length) = $head =~ /^Content-Length:\s*(\d+)\s*$/mi;
+    my ($length) = $head =~ / ^Content-Length:\s*(\d+)\s*$ /mix;
     $length = 0 unless defined $length;
 
     while ( length($body) < $length ) {
         my $wanted = $length - length($body);
         my $read   = sysread( $socket, my $chunk, $wanted );
-        return unless defined $read && $read > 0;
+        return if !defined $read || $read <= 0;
         $body .= $chunk;
     }
 
@@ -112,7 +112,7 @@ sub _write_all {
     while ( $offset < length($data) ) {
         my $written =
           syswrite( $socket, $data, length($data) - $offset, $offset );
-        return unless defined $written && $written > 0;
+        return if !defined $written || $written <= 0;
         $offset += $written;
     }
     return 1;
@@ -127,16 +127,36 @@ sub _rpc_error {
     };
 }
 
+sub _authenticated_response {
+    my ($request) = @_;
+    my $token = $request->{params}{Token} // '';
+    return _rpc_error( -32602, 'Invalid or missing token' )
+      if $token ne 'test-token';
+
+    my $method  = $request->{method} // '';
+    my %results = (
+        RouterInfo         => \%ROUTER_RESULT,
+        ClientServicesInfo => \%SERVICES_RESULT,
+        RouterManager      => {},
+    );
+    my $result = $results{$method};
+    if ( $method eq 'Echo' ) {
+        $result = { Result => $request->{params}{Echo} // '' };
+    }
+    return _rpc_error( -32601, 'Method not found' ) unless defined $result;
+    return { id => 1, result => $result, jsonrpc => '2.0' };
+}
+
 sub _serve_connection {
     my ($socket) = @_;
 
     my ( $head, $body ) = _read_http_request($socket);
     return unless defined $head;
 
-    my ($request_line) = split /\r?\n/, $head;
+    my ($request_line) = split / \r?\n /x, $head;
     return
       unless defined $request_line
-      && $request_line =~ m{\APOST\s+\S+\s+HTTP/1\.[01]\z};
+      && $request_line =~ m{ \APOST\s+\S+\s+HTTP/1\.[01]\z }x;
 
     my $request = eval { JSON::PP->new->utf8->decode($body) };
     my $response;
@@ -156,37 +176,7 @@ sub _serve_connection {
           : { id => 1, result => {}, jsonrpc => '2.0' };
     }
     else {
-        my $token = $request->{params}{Token} // '';
-        if ( $token ne 'test-token' ) {
-            $response = _rpc_error( -32602, 'Invalid or missing token' );
-        }
-        elsif ( ( $request->{method} // '' ) eq 'RouterInfo' ) {
-            $response = {
-                id      => 1,
-                result  => \%ROUTER_RESULT,
-                jsonrpc => '2.0',
-            };
-        }
-        elsif ( ( $request->{method} // '' ) eq 'ClientServicesInfo' ) {
-            $response = {
-                id      => 1,
-                result  => \%SERVICES_RESULT,
-                jsonrpc => '2.0',
-            };
-        }
-        elsif ( ( $request->{method} // '' ) eq 'Echo' ) {
-            $response = {
-                id      => 1,
-                result  => { Result => $request->{params}{Echo} // '' },
-                jsonrpc => '2.0',
-            };
-        }
-        elsif ( ( $request->{method} // '' ) eq 'RouterManager' ) {
-            $response = { id => 1, result => {}, jsonrpc => '2.0' };
-        }
-        else {
-            $response = _rpc_error( -32601, 'Method not found' );
-        }
+        $response = _authenticated_response($request);
     }
 
     my $json = JSON::PP->new->utf8->canonical->encode($response);
@@ -216,8 +206,8 @@ sub start_fake_server {
     BAIL_OUT("cannot fork fake server: $!") unless defined $pid;
 
     if ( $pid == 0 ) {
-        $SIG{TERM} = sub { exit 0 };
-        $SIG{PIPE} = 'IGNORE';
+        local $SIG{TERM} = sub { exit 0 };
+        local $SIG{PIPE} = 'IGNORE';
         while ( my $connection = $listener->accept ) {
             _serve_connection($connection);
             close $connection;
@@ -241,15 +231,13 @@ sub _run_command {
     my ( $stdin, $stdout, $stderr ) = ( gensym(), gensym(), gensym() );
     my $pid;
     {
-        local %ENV = %ENV;
-        for my $name ( keys %{$environment} ) {
-            if ( defined $environment->{$name} ) {
-                $ENV{$name} = $environment->{$name};
-            }
-            else {
-                delete $ENV{$name};
-            }
-        }
+        my @defined_names =
+          grep { defined $environment->{$_} } keys %{$environment};
+        local %ENV = ( %ENV, map { $_ => $environment->{$_} } @defined_names );
+        delete @ENV{
+            grep { !defined $environment->{$_} }
+              keys %{$environment}
+        };
         $pid =
           IPC::Open3::open3( $stdin, $stdout, $stderr, $command, @arguments );
     }
@@ -333,10 +321,8 @@ sub write_openssl_shim {
 
     # Deliberately extensionless: Cygwin/MSYS reports an .exe suffix,
     # but this POSIX script must win before a later system OpenSSL.
-    my $path = File::Spec->catfile( $directory, 'openssl' );
-    open my $handle, '>', $path
-      or BAIL_OUT("cannot create openssl shim: $!");
-    print {$handle} <<'SHIM';
+    my $path        = File::Spec->catfile( $directory, 'openssl' );
+    my $script_text = <<'SHIM';
 #!/bin/sh
 if [ -n "$I2PDCTL_TEST_ARGV_LOG" ]; then
     : > "$I2PDCTL_TEST_ARGV_LOG" || exit 90
@@ -399,6 +385,9 @@ case "$I2PDCTL_TEST_TLS_MODE" in
 esac
 exit 0
 SHIM
+    open my $handle, '>', $path
+      or BAIL_OUT("cannot create openssl shim: $!");
+    print {$handle} $script_text;
     close $handle or BAIL_OUT("cannot write openssl shim: $!");
     chmod 0755, $path
       or BAIL_OUT("cannot make openssl shim executable: $!");
@@ -419,7 +408,7 @@ ok( -f $script, 'i2pdctl exists' );
 {
     my ( $out, $err, $code ) = _run_command( {}, $^X, '-c', $script );
     is( $code, 0, 'perl -c succeeds' );
-    like( $err, qr/syntax OK/, 'perl -c reports syntax OK' );
+    like( $err, qr/ syntax\ OK /x, 'perl -c reports syntax OK' );
 }
 
 start_fake_server();
@@ -430,23 +419,23 @@ ok( $server_port > 0, 'fake I2PControl server is listening' );
     is( $code, 0, '--help exits 0' );
     like(
         $out,
-        qr/usage: i2pdctl \[-h\] \{exec,raw_info,info\}/,
+        qr/ usage:\ i2pdctl\ \[-h\]\ \{exec,raw_info,info\} /x,
         'main usage is printed'
     );
-    like( $out, qr/raw_info/, 'main help lists raw_info' );
+    like( $out, qr/ raw_info /x, 'main help lists raw_info' );
 }
 
 {
     my ( $out, $err, $code ) = run_i2pdctl();
     is( $code, 0, 'no command prints help and exits 0' );
-    like( $out, qr/positional arguments:/, 'no command prints help' );
+    like( $out, qr/ positional\ arguments: /x, 'no command prints help' );
 }
 
 {
     my ( $out, $err, $code ) = run_i2pdctl('bogus');
     is( $code, 2, 'unknown command exits 2' );
-    like( $err, qr/invalid choice: bogus/, 'unknown command is reported' );
-    like( $err, qr/usage: i2pdctl/, 'usage is printed on argument error' );
+    like( $err, qr/ invalid\ choice:\ bogus /x, 'unknown command is reported' );
+    like( $err, qr/ usage:\ i2pdctl /x, 'usage is printed on argument error' );
     is( $out, '', 'an unknown command writes nothing to stdout' );
 }
 
@@ -456,7 +445,11 @@ ok( $server_port > 0, 'fake I2PControl server is listening' );
 {
     my ( $out, $err, $code ) = run_i2pdctl( 'exec', '-h' );
     is( $code, 0, 'exec -h exits 0' );
-    like( $out, qr/usage: i2pdctl exec/, 'exec usage is printed on stdout' );
+    like(
+        $out,
+        qr/ usage:\ i2pdctl\ exec /x,
+        'exec usage is printed on stdout'
+    );
     is( $err, '', 'exec -h writes nothing to stderr' );
 }
 
@@ -465,7 +458,7 @@ ok( $server_port > 0, 'fake I2PControl server is listening' );
     is( $code, 0, 'raw_info --help exits 0' );
     like(
         $out,
-        qr/Supported methods: RouterInfo, ClientServicesInfo/,
+        qr/ Supported\ methods:\ RouterInfo,\ ClientServicesInfo /x,
         'raw_info help lists the supported methods'
     );
 }
@@ -473,7 +466,11 @@ ok( $server_port > 0, 'fake I2PControl server is listening' );
 {
     my ( $out, $err, $code ) = run_i2pdctl( 'info', '-h' );
     is( $code, 0, 'info -h exits 0' );
-    like( $out, qr/usage: i2pdctl info/, 'info usage is printed on stdout' );
+    like(
+        $out,
+        qr/ usage:\ i2pdctl\ info /x,
+        'info usage is printed on stdout'
+    );
 }
 
 {
@@ -481,10 +478,14 @@ ok( $server_port > 0, 'fake I2PControl server is listening' );
     is( $code, 2, 'unknown subcommand option exits 2' );
     like(
         $err,
-        qr/Unknown option: bogus/i,
+        qr/ Unknown\ option:\ bogus /ix,
         'unknown option is reported on stderr'
     );
-    like( $err, qr/usage: i2pdctl exec/, 'usage is printed for a bad option' );
+    like(
+        $err,
+        qr/ usage:\ i2pdctl\ exec /x,
+        'usage is printed for a bad option'
+    );
     is( $out, '', 'a bad option writes nothing to stdout' );
 }
 
@@ -493,7 +494,7 @@ ok( $server_port > 0, 'fake I2PControl server is listening' );
     is( $code, 2, 'extra exec arguments exit 2' );
     like(
         $err,
-        qr/unrecognized arguments: extra/,
+        qr/ unrecognized\ arguments:\ extra /x,
         'extra exec arguments are reported'
     );
     is( $out, '', 'extra arguments write nothing to stdout' );
@@ -504,7 +505,7 @@ ok( $server_port > 0, 'fake I2PControl server is listening' );
     is( $code, 2, 'info with arguments exits 2' );
     like(
         $err,
-        qr/unrecognized arguments: extra/,
+        qr/ unrecognized\ arguments:\ extra /x,
         'info arguments are reported'
     );
     is( $out, '', 'info arguments write nothing to stdout' );
@@ -515,7 +516,7 @@ ok( $server_port > 0, 'fake I2PControl server is listening' );
     is( $code, 2, 'exec without arguments exits 2' );
     like(
         $err,
-        qr/required: method, parameters/,
+        qr/ required:\ method,\ parameters /x,
         'missing exec arguments reported'
     );
 }
@@ -523,7 +524,7 @@ ok( $server_port > 0, 'fake I2PControl server is listening' );
 {
     my ( $out, $err, $code ) = run_i2pdctl( 'exec', 'Echo' );
     is( $code, 2, 'exec without parameters exits 2' );
-    like( $err, qr/required: parameters/, 'missing parameters reported' );
+    like( $err, qr/ required:\ parameters /x, 'missing parameters reported' );
 }
 
 {
@@ -531,7 +532,7 @@ ok( $server_port > 0, 'fake I2PControl server is listening' );
     is( $code, 0, 'invalid parameters preserve the old zero exit status' );
     like(
         $out,
-        qr/\AError: parameters should be a valid JSON object\n\z/,
+        qr/ \AError:\ parameters\ should\ be\ a\ valid\ JSON\ object\n\z /x,
         'invalid JSON parameters message is preserved'
     );
 }
@@ -541,7 +542,7 @@ ok( $server_port > 0, 'fake I2PControl server is listening' );
     is( $code, 0, 'non-object parameters preserve the old zero exit status' );
     like(
         $out,
-        qr/parameters should be a valid JSON object/,
+        qr/ parameters\ should\ be\ a\ valid\ JSON\ object /x,
         'non-object parameters are rejected as an object'
     );
 }
@@ -549,9 +550,12 @@ ok( $server_port > 0, 'fake I2PControl server is listening' );
 {
     my ( $out, $err, $code ) = run_i2pdctl( 'raw_info', 'Nope' );
     is( $code, 0, 'unknown info method exits 0 like the old script' );
+    my $invalid_method = qr/ Invalid\ method\ Nope\. /x;
+    my $supported_methods =
+      qr/ Supported\ methods\ are\ RouterInfo,\ ClientServicesInfo /x;
     like(
         $out,
-qr/Invalid method Nope\. Supported methods are RouterInfo, ClientServicesInfo/,
+        qr/ $invalid_method[ ] $supported_methods /x,
         'unknown info method message is preserved'
     );
 }
@@ -575,7 +579,7 @@ qr/Invalid method Nope\. Supported methods are RouterInfo, ClientServicesInfo/,
     my ( $out, $err, $code ) =
       run_i2pdctl( 'raw_info', 'RouterInfo', 'RouterInfo' );
     is( $code, 0, 'duplicate raw_info methods exit 0' );
-    my $key_count = () = $out =~ /"RouterInfo"/g;
+    my $key_count = () = $out =~ / "RouterInfo" /gx;
     is( $key_count, 1, 'duplicate raw_info methods produce one JSON key' );
 }
 
@@ -591,7 +595,7 @@ qr/Invalid method Nope\. Supported methods are RouterInfo, ClientServicesInfo/,
     is( $code, 1, 'authentication failure exits 1' );
     like(
         $err,
-        qr/authentication failed \(no token returned\)/,
+        qr/ authentication\ failed\ \(no\ token\ returned\) /x,
         'authentication failure is reported'
     );
     is( $out, '', 'authentication failure prints no result' );
@@ -608,7 +612,11 @@ qr/Invalid method Nope\. Supported methods are RouterInfo, ClientServicesInfo/,
         '{"Echo":"utf8"}',
     );
     is( $code, 0, 'a UTF-8 password authenticates' );
-    like( $out, qr/'Result': 'utf8'/, 'the UTF-8-password request succeeds' );
+    like(
+        $out,
+        qr/ 'Result':\ 'utf8' /x,
+        'the UTF-8-password request succeeds'
+    );
 }
 
 {
@@ -633,49 +641,80 @@ qr/Invalid method Nope\. Supported methods are RouterInfo, ClientServicesInfo/,
     my ( $out, $err, $code ) =
       run_i2pdctl( 'exec', 'Echo', '{"Echo":"hello"}' );
     is( $code, 0, 'exec without -j exits 0' );
-    like( $out, qr/'Result': 'hello'/,
-        'exec human output contains the result' );
+    like(
+        $out,
+        qr/ 'Result':\ 'hello' /x,
+        'exec human output contains the result'
+    );
 }
 
 {
     my ( $out, $err, $code ) = run_i2pdctl('info');
     is( $code, 0, 'info exits 0' );
-    like( $out, qr/### Router info/, 'info prints the router section' );
-    like( $out, qr/Uptime: 0:00:05/, 'uptime is humanized' );
-    like( $out, qr/Status: OK/,      'router status is mapped' );
+    like( $out, qr/ \#\#\#\ Router\ info /x, 'info prints the router section' );
+    like( $out, qr/ Uptime:\ 0:00:05 /x,     'uptime is humanized' );
+    like( $out, qr/ Status:\ OK /x,          'router status is mapped' );
     like(
         $out,
-        qr/Tunnel creation success rate: 87%/,
+        qr/ Tunnel\ creation\ success\ rate:\ 87% /x,
         'tunnel success rate is shown'
     );
+    my $received = qr{ Received:\ 2\.0KB\ \(1024\ B/s\) }x;
+    my $sent     = qr{ Sent:\ 1024B\ \(512\ B/s\) }x;
     like(
         $out,
-        qr/Received: 2\.0KB \(1024 B\/s\)  \/  Sent: 1024B \(512 B\/s\)/,
+        qr{ $received [ ]{2}/[ ]{2} $sent }x,
         'bandwidth is humanized with the historical B/s suffix'
     );
-    like( $out, qr/Known routers: 12  \/  Active: 3/, 'peer counts are shown' );
-    like( $out, qr/### Interfaces/,  'info prints the interfaces section' );
-    like( $out, qr/- HTTPProxy: ON/, 'enabled interface is ON' );
-    like( $out, qr/- SOCKS: OFF/,    'disabled interface is OFF' );
-    like( $out, qr/### Client I2P Tunnels/, 'client tunnels are listed' );
     like(
         $out,
-        qr/- example \{'address': 'abc\.b32\.i2p'\}/,
+        qr/ Known\ routers:\ 12\ \ \/\ \ Active:\ 3 /x,
+        'peer counts are shown'
+    );
+    like(
+        $out,
+        qr/ \#\#\#\ Interfaces /x,
+        'info prints the interfaces section'
+    );
+    like( $out, qr/ -\ HTTPProxy:\ ON /x, 'enabled interface is ON' );
+    like( $out, qr/ -\ SOCKS:\ OFF /x,    'disabled interface is OFF' );
+    like(
+        $out,
+        qr/ \#\#\#\ Client\ I2P\ Tunnels /x,
+        'client tunnels are listed'
+    );
+    like(
+        $out,
+        qr/ -\ example\ \{'address':\ 'abc\.b32\.i2p'\} /x,
         'client tunnel entry is shown'
     );
-    unlike( $out, qr/\x1b/,
+    unlike( $out, qr/ \x1b /x,
         'control characters from the server are not sent to the terminal' );
     like(
         $out,
-        qr/- bad\\x1bname \{'address': 'x'\}/,
+        qr/ -\ bad\\x1bname\ \{'address':\ 'x'\} /x,
         'control characters in tunnel names are escaped for display'
     );
-    unlike( $out, qr/[\x{80}-\x{9f}]/,
-        'C1 control characters are not sent to the terminal' );
-    like( $out, qr/\\x\{9b\}evil/,
-        'C1 control characters in values are escaped' );
-    like( $out, qr/### Server I2P Tunnels/,   'server tunnels are listed' );
-    like( $out, qr/- web def\.b32\.i2p:8080/, 'server tunnel port is shown' );
+    unlike(
+        $out,
+        qr/ [\x{80}-\x{9f}] /x,
+        'C1 control characters are not sent to the terminal'
+    );
+    like(
+        $out,
+        qr/ \\x\{9b\}evil /x,
+        'C1 control characters in values are escaped'
+    );
+    like(
+        $out,
+        qr/ \#\#\#\ Server\ I2P\ Tunnels /x,
+        'server tunnels are listed'
+    );
+    like(
+        $out,
+        qr/ -\ web\ def\.b32\.i2p:8080 /x,
+        'server tunnel port is shown'
+    );
 }
 
 {
@@ -687,9 +726,12 @@ qr/Invalid method Nope\. Supported methods are RouterInfo, ClientServicesInfo/,
         $^X, $script, 'info',
     );
     is( $code, 1, 'unavailable URL exits 1' );
+    my $unavailable = qr/ I2PControl\ URL\ is\ unavailable\. /x;
+    my $advice =
+      qr/ Check\ your\ openi2pd\ settings\ and\ network\ connection\. /x;
     like(
         $out,
-qr/I2PControl URL is unavailable\. Check your openi2pd settings and network connection\./,
+        qr/ $unavailable [ ] $advice /x,
         'unavailable URL message is preserved'
     );
 }
@@ -701,7 +743,7 @@ qr/I2PControl URL is unavailable\. Check your openi2pd settings and network conn
     is( $code, 1, 'unsupported URL scheme exits 1' );
     like(
         $err,
-        qr/invalid I2PControl URL/,
+        qr/ invalid\ I2PControl\ URL /x,
         'unsupported URL scheme is rejected'
     );
 }
@@ -727,7 +769,7 @@ qr/I2PControl URL is unavailable\. Check your openi2pd settings and network conn
     is( $code, 0, 'proxy environment variables are ignored' );
     like(
         $out,
-        qr/'Result': 'direct'/,
+        qr/ 'Result':\ 'direct' /x,
         'the direct loopback request is not sent through a proxy'
     );
 }
@@ -768,7 +810,7 @@ qr/I2PControl URL is unavailable\. Check your openi2pd settings and network conn
         is( $code, 1, "malformed URL ($label) exits 1" );
         like(
             $err,
-            qr/invalid I2PControl URL/,
+            qr/ invalid\ I2PControl\ URL /x,
             "malformed URL ($label) is rejected"
         );
     }
@@ -831,7 +873,7 @@ SKIP: {
         is( $code, 1, 'truncated Content-Length exits 1' );
         like(
             $err,
-            qr/truncated response from I2PControl/,
+            qr/ truncated\ response\ from\ I2PControl /x,
             'truncated Content-Length is rejected'
         );
 
@@ -840,7 +882,7 @@ SKIP: {
         is( $code, 1, 'non-numeric Content-Length exits 1' );
         like(
             $err,
-            qr/invalid Content-Length from I2PControl/,
+            qr/ invalid\ Content-Length\ from\ I2PControl /x,
             'non-numeric Content-Length is rejected'
         );
 
@@ -849,7 +891,7 @@ SKIP: {
         is( $code, 1, 'malformed chunk exits 1' );
         like(
             $err,
-            qr/malformed chunked response from I2PControl/,
+            qr/ malformed\ chunked\ response\ from\ I2PControl /x,
             'malformed chunk size is rejected'
         );
 
@@ -858,7 +900,7 @@ SKIP: {
         is( $code, 1, 'oversized chunk exits 1' );
         like(
             $err,
-            qr/response from I2PControl exceeds size limit/,
+            qr/ response\ from\ I2PControl\ exceeds\ size\ limit /x,
             'oversized chunk is rejected before allocation'
         );
 
@@ -867,7 +909,7 @@ SKIP: {
         is( $code, 1, 'oversized Content-Length exits 1' );
         like(
             $err,
-            qr/response from I2PControl exceeds size limit/,
+            qr/ response\ from\ I2PControl\ exceeds\ size\ limit /x,
             'oversized Content-Length is rejected before allocation'
         );
 
@@ -876,7 +918,7 @@ SKIP: {
         is( $code, 1, 'incomplete HTTP header exits 1' );
         like(
             $err,
-            qr/invalid HTTP response from I2PControl/,
+            qr/ invalid\ HTTP\ response\ from\ I2PControl /x,
             'incomplete HTTP header is rejected'
         );
 
@@ -885,7 +927,7 @@ SKIP: {
         is( $code, 1, 'unsupported Transfer-Encoding exits 1' );
         like(
             $err,
-            qr/unsupported Transfer-Encoding from I2PControl/,
+            qr/ unsupported\ Transfer-Encoding\ from\ I2PControl /x,
             'unsupported Transfer-Encoding is rejected'
         );
 
@@ -894,7 +936,7 @@ SKIP: {
         is( $code, 1, 'malformed status line exits 1' );
         like(
             $err,
-            qr/invalid HTTP status from I2PControl/,
+            qr/ invalid\ HTTP\ status\ from\ I2PControl /x,
             'malformed status line is rejected'
         );
 
@@ -903,7 +945,7 @@ SKIP: {
         is( $code, 1, 'non-2xx TLS response exits 1' );
         like(
             $out,
-            qr/I2PControl URL is unavailable/,
+            qr/ I2PControl\ URL\ is\ unavailable /x,
             'non-2xx TLS response reports an unavailable service'
         );
 
@@ -912,7 +954,7 @@ SKIP: {
         is( $code, 1, 'invalid JSON body exits 1' );
         like(
             $err,
-            qr/invalid JSON response from I2PControl/,
+            qr/ invalid\ JSON\ response\ from\ I2PControl /x,
             'invalid JSON body is rejected'
         );
 
@@ -920,17 +962,17 @@ SKIP: {
         is( $code, 1, 'openssl failure exits 1' );
         like(
             $err,
-            qr/TLS request to I2PControl failed: boom/,
+            qr/ TLS\ request\ to\ I2PControl\ failed:\ boom /x,
             'openssl diagnostics are reported'
         );
-        unlike( $err, qr/\e/,
+        unlike( $err, qr/ \e /x,
             'openssl diagnostics are stripped of escape sequences' );
 
         ( $out, $err, $code ) = $run->( 'empty', 'https://127.0.0.1:7650/' );
         is( $code, 1, 'empty TLS response exits 1' );
         like(
             $err,
-            qr/TLS request to I2PControl failed/,
+            qr/ TLS\ request\ to\ I2PControl\ failed /x,
             'empty TLS response is reported as a failure'
         );
 
@@ -970,7 +1012,7 @@ SKIP: {
         is( $out,  '', 'missing openssl prints nothing to stdout' );
         like(
             $err,
-            qr/refusing to use cleartext/,
+            qr/ refusing\ to\ use\ cleartext /x,
             'missing openssl refuses to downgrade to cleartext'
         );
         ok( !( -e $log ), 'missing openssl starts no transport' );
@@ -987,7 +1029,7 @@ SKIP: {
         is( $code, 1, 'invalid TLS backend exits 1' );
         like(
             $err,
-            qr/invalid I2PDCTL_TLS_BACKEND/,
+            qr/ invalid\ I2PDCTL_TLS_BACKEND /x,
             'invalid TLS backend is rejected'
         );
         ok( !( -e $log ), 'invalid TLS backend starts no transport' );
