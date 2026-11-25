@@ -118,6 +118,7 @@ is_deeply( \@python_files,   [], 'no project-maintained Python sources' );
 is_deeply( \@python_shebang, [], 'no Python shebangs in maintained files' );
 
 my @scripts = (
+    'build/windows-manual.pl',
     'scripts/validate-agent-knowledge.pl',
     'tests/agent_knowledge_validator/test_validator.t',
     'tests/agent_knowledge_validator/fixtures/execution-marker.pl',
@@ -152,6 +153,7 @@ my @scripts = (
 
 my @discovered = map { repo_relative($_) }
   grep { -f $_ } (
+    glob( File::Spec->catfile( $root, 'build', '*.pl' ) ),
     glob( File::Spec->catfile( $root, 'tools', 'scripts', '*' ) ),
     glob( File::Spec->catfile( $root, 'tools', 'tests',   '*.t' ) ),
     glob( File::Spec->catfile( $root, 'tools', 'tests', 'fixtures', '*.pl' ) ),
