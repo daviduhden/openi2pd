@@ -46,7 +46,8 @@ jobs:
             pkg_add cmake ninja boost miniupnpc llvm libcxx git
       # The pinned custom shell copies files back after a failed command
       # and returns its original status; the action's run input does not.
-      - name: Build and test inside OpenBSD
+      - name: Build inside OpenBSD
+        id: build_openbsd
         shell: openbsd {0}  # zizmor: ignore[misfeature] custom shell required by vmactions/openbsd-vm failure copyback
         run: |
           set -eu
@@ -68,13 +69,29 @@ jobs:
             exit "$build_status"
           fi
           test -x build-output/i2pd-tui
+      - name: Run OpenBSD test suite
+        if: ${{ !cancelled() && steps.build_openbsd.outcome == 'success' }}
+        shell: openbsd {0}  # zizmor: ignore[misfeature] custom shell required by vmactions/openbsd-vm failure copyback
+        run: |
+          set -eu
+          ctest --test-dir build-output -N -L platform --no-tests=error
           ctest --test-dir build-output -j 2 --output-on-failure \
             --no-tests=error --output-junit "$PWD/ctest-openbsd.xml"
-          ctest --test-dir build-output -N -L platform --no-tests=error
-          # The VM shell is root. Stage only these two executables in a
-          # private directory for the unprivileged credential cases.
+      - name: Provision OpenBSD credential fixture account
+        id: provision_credentials
+        if: ${{ !cancelled() && steps.build_openbsd.outcome == 'success' }}
+        shell: openbsd {0}  # zizmor: ignore[misfeature] custom shell required by vmactions/openbsd-vm failure copyback
+        run: |
+          set -eu
           # The account uses the base system's non-writable empty home.
           useradd -d /var/empty -g =uid -s /bin/sh openi2pd-ci
+      - name: Run OpenBSD non-root credential checks
+        if: ${{ !cancelled() && steps.provision_credentials.outcome == 'success' }}
+        shell: openbsd {0}  # zizmor: ignore[misfeature] custom shell required by vmactions/openbsd-vm failure copyback
+        run: |
+          set -eu
+          # The VM shell is root. Stage only these two executables in a
+          # private directory for the unprivileged credential cases.
           credential_dir=$(mktemp -d /tmp/openi2pd-credentials.XXXXXXXX)
           chown openi2pd-ci "$credential_dir"
           for name in test-privsep-worker-identity test-privsep-credentials; do
@@ -106,6 +123,11 @@ jobs:
             echo 'OpenBSD non-root credential coverage was skipped' >&2
             exit 1
           fi
+      - name: Run OpenBSD privileged credential drop check
+        if: ${{ !cancelled() && steps.provision_credentials.outcome == 'success' }}
+        shell: openbsd {0}  # zizmor: ignore[misfeature] custom shell required by vmactions/openbsd-vm failure copyback
+        run: |
+          set -eu
           # Keep the root-started probe outside the private stage owned
           # by the unprivileged account. Only its child drops credentials.
           drop_dir=$(mktemp -d /tmp/openi2pd-credential-drop.XXXXXXXX)
@@ -116,6 +138,11 @@ jobs:
           EOF
           ctest --test-dir "$drop_dir" -j 1 --output-on-failure \
             --no-tests=error --output-junit "$PWD/ctest-openbsd-credential-drop.xml"
+      - name: Build with the OpenBSD POSIX Make front end
+        if: ${{ !cancelled() && steps.build_openbsd.outcome == 'success' }}
+        shell: openbsd {0}  # zizmor: ignore[misfeature] custom shell required by vmactions/openbsd-vm failure copyback
+        run: |
+          set -eu
           make BUILD_DIR=build-make \
             CMAKE_FLAGS="-DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DI2PD_OPENSSL_EXPECT=LibreSSL" \
             router

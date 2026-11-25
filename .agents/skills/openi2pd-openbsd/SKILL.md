@@ -106,6 +106,11 @@ limitation; do not substitute local execution. Ask for:
   in its child before exercising the production drop. Inspect both
   JUnit files because a passing account-resolution suite alone cannot
   establish a successful transition from root.
+- Gate the OpenBSD platform and credential steps on their actual build
+  and account prerequisites. Keep the two credential cases independent
+  of the broad suite and of each other. Each step returns its own status
+  through the failure-copyback shell and each suite retains separate
+  JUnit evidence.
 - UDPTunnel's shared socket-buffer request is 2 MiB on OpenBSD, matching
   default SB_MAX, and 4 MiB elsewhere. Client startup and UDPSession both
   use it; retain configuration errors if a custom kernel limit still fails.

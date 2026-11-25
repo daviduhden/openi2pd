@@ -147,7 +147,7 @@ for my $file (@files) {
         my ($prepare) = $without_comments =~
 /(^      - name: Prepare OpenBSD VM\n.*?)(?=^      - (?:name|uses):|\z)/ms;
         my ($build) = $without_comments =~
-/(^      - name: Build and test inside OpenBSD\n.*?)(?=^      - (?:name|uses):|\z)/ms;
+/(^      - name: Build inside OpenBSD\n.*?)(?=^      - (?:name|uses):|\z)/ms;
         my ($upload) = $without_comments =~
 /(^      - name: Upload OpenBSD test logs\n.*?)(?=^      - (?:name|uses):|\z)/ms;
         for my $required (
@@ -178,10 +178,37 @@ for my $file (@files) {
               "$file: OpenBSD failure copyback missing: build $required"
               unless defined $build && index( $build, $required ) >= 0;
         }
+        my @openbsd_steps = (
+            [ 'Run OpenBSD test suite', 'build_openbsd',
+                'ctest --test-dir build-output', 'ctest-openbsd.xml' ],
+            [ 'Provision OpenBSD credential fixture account', 'build_openbsd',
+                'id: provision_credentials', 'useradd -d /var/empty' ],
+            [ 'Run OpenBSD non-root credential checks', 'provision_credentials',
+                'su -s /bin/sh openi2pd-ci', 'ctest-openbsd-credentials.xml' ],
+            [ 'Run OpenBSD privileged credential drop check',
+                'provision_credentials', '--verify-privileged-drop',
+                'ctest-openbsd-credential-drop.xml' ],
+            [ 'Build with the OpenBSD POSIX Make front end', 'build_openbsd',
+                'make BUILD_DIR=build-make', 'test -x build-make/i2pd' ]
+        );
+        for my $contract (@openbsd_steps) {
+            my ( $name, $dependency, @required ) = @{$contract};
+            my ($step) = $without_comments =~
+/(^      - name: \Q$name\E\n.*?)(?=^      - (?:name|uses):|\z)/ms;
+            my $condition =
+              'if: ${{ !cancelled() && steps.'
+              . $dependency . ".outcome == 'success' }}";
+            for my $required ( $condition, 'shell: openbsd {0}', @required ) {
+                push @errors,
+                  "$file: OpenBSD failure copyback missing: $name / $required"
+                  unless defined $step && index( $step, $required ) >= 0;
+            }
+        }
         for my $required (
             'if: always()',         'uses: actions/upload-artifact@',
             'build-output/Testing', 'configure.log',
-            'build.log',            'ctest-openbsd.xml'
+            'build.log',            'ctest-openbsd.xml',
+            'ctest-openbsd-credentials.xml', 'ctest-openbsd-credential-drop.xml'
           )
         {
             push @errors,

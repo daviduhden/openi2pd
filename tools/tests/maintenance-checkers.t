@@ -748,6 +748,26 @@ qr/worker initialization diagnostic|unsupported crash debugger line|missing boun
         qr/OpenBSD failure copyback missing: upload build[.]log/,
         'OpenBSD upload diagnostic is independent of command capture'
     );
+    for my $entry (
+        [ 'Run OpenBSD non-root credential checks', 'provision_credentials' ],
+        [ 'Run OpenBSD privileged credential drop check',
+          'provision_credentials' ],
+        [ 'Build with the OpenBSD POSIX Make front end', 'build_openbsd' ]
+      )
+    {
+        my ( $name, $dependency ) = @{$entry};
+        my $candidate = $openbsd_source;
+        my $header = "      - name: $name\n";
+        my $gate = $header . '        if: ${{ !cancelled() && steps.'
+          . $dependency . ".outcome == 'success' }}\n";
+        my $changed = $candidate =~ s/\Q$gate\E/$header/;
+        ok( $changed, 'OpenBSD mutation removes one independent phase gate' );
+        write_file( $openbsd, $candidate );
+        ( $code, $out ) = run_checker($checker);
+        is( $code, 1, 'OpenBSD phase must survive a sibling failure' );
+        like( $out, qr/OpenBSD failure copyback missing: \Q$name\E/,
+            'OpenBSD phase diagnostic identifies the missing gate' );
+    }
     my $action_run = $openbsd_source;
     my $added_run  = $action_run =~ s{(            pkg_add [^\n]+\n)}
       {$1 . "          run: |\n            exit 0\n"}e;
