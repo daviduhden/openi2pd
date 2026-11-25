@@ -282,6 +282,15 @@ jobs:
         shell: bash
         run: |
           dpkg-buildpackage -us -uc -b 2>&1 | tee ../debian-build.log
+      - name: Check Debian DWARF compatibility
+        run: |
+          test -s ../debian-build.log
+          if grep -E 'debugedit: .*Unknown DWARF DW_FORM_0x1f2[01]' ../debian-build.log; then
+            echo 'debugedit rejected DWZ alternate references' >&2
+            exit 1
+          else
+            test "$?" -eq 1
+          fi
       - name: Lintian
         run: |
           set -o pipefail
@@ -426,6 +435,17 @@ jobs:
           fi
           if [ "$BUILD_OUTCOME" = success ]; then
             test -s debug-symbol-output/SHA256SUMS
+            for binary in i2pd i2pd-tui; do
+              found=false
+              for file in "debug-symbol-output/${binary}-dbgsym_"*.ddeb \
+                "debug-symbol-output/${binary}-dbgsym_"*.deb; do
+                if [ -s "$file" ]; then
+                  found=true
+                  break
+                fi
+              done
+              test "$found" = true
+            done
           fi
       - name: Upload Debian package evidence
         if: always()

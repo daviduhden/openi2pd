@@ -89,6 +89,11 @@ override_dh_installsystemd:
 override_dh_installtmpfiles:
 	dh_installtmpfiles
 
+# Keep per-image DWARF optimization. The multifile mode emits GNU
+# alternate forms that the debugedit used later by dh_strip rejects.
+override_dh_dwz:
+	dh_dwz --no-dwz-multifile
+
 # Any file installed by CMake but claimed by no manifest is a packaging
 # error (an unshipped binary, stray doc tree or new unit), so fail the
 # build rather than silently dropping it.

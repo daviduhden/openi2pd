@@ -292,6 +292,8 @@ assert_contains("${packaging_workflow}" "grep -Eq 'static(-pie)? linked' static-
   "static-musl verification must accept static PIE file descriptions")
 foreach(required IN ITEMS
     "dpkg-buildpackage -us -uc -b 2>&1 | tee ../debian-build.log"
+    "Unknown DWARF DW_FORM_0x1f2[01]"
+    "for binary in i2pd i2pd-tui; do"
     "../i2pd*-dbgsym_*.ddeb ../i2pd*-dbgsym_*.deb"
     "test -s debug-symbol-output/SHA256SUMS"
     "name: debian-debug-symbols"
@@ -299,6 +301,8 @@ foreach(required IN ITEMS
   assert_contains("${packaging_workflow}" "${required}"
     "Debian debug packaging must retain the build transcript and split debug archives")
 endforeach()
+assert_contains("${debian_rules}" "dh_dwz --no-dwz-multifile"
+  "Debian per-image DWZ optimization must avoid alternate forms before dh_strip")
 foreach(required IN ITEMS
     "Checking that remove preserves administrator data"
     "FAIL: remove deleted /etc/i2pd/i2pd.conf"

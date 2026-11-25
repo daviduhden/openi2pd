@@ -122,6 +122,11 @@ Ask for exact paths and package names. Do not let them run `dpkg-buildpackage`,
   Ubuntu emits `.ddeb` files, while Debian can emit `-dbgsym_*.deb`. Keep
   both spellings in the evidence collector and retain their checksums
   separately from the installable package payload.
+  The native Debian rules use per-image DWZ optimization so debugedit
+  does not receive GNU alternate forms. Keep split symbols for both
+  packages. The CI guard checks the original transcript before artifact
+  collection. Multifile deduplication can reduce package size, so
+  revisit this choice if the supported debugedit handles both forms.
 - Auxiliary tool pages share `man/openi2pd-tools.1`; command-named `.so`
   pages must be installed with that target in the Tools component. Keep
   Debian's explicit payload inventory aligned and inspect the exact package
