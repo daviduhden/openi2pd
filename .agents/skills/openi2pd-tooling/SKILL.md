@@ -122,6 +122,11 @@ a TUI client.
 
 ## Known issues and decisions
 
+A negative CLI case must check the documented exit code. When a CMake
+driver captures stderr, scan it with the shared sanitizer report patterns
+before accepting the result. Report only the operation and failure type
+because child output can contain private tool operands.
+
 When making a Perl checker regex free-spacing, escape literal spaces
 and hashes and preserve capture order. Review the flags on interpolated
 `qr` fragments where the patterns are defined. Keep the scanner's

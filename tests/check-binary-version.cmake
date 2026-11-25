@@ -26,6 +26,8 @@
 # a defect. Truncation is never tolerated.
 #
 
+include("${CMAKE_CURRENT_LIST_DIR}/../build/cmake/SanitizerReports.cmake")
+
 # Standalone scripts run with `cmake -P` have no
 # cmake_minimum_required(). CMP0012 OLD treats TRUE/FALSE as
 # variable names, so a boolean-valued condition would silently
@@ -75,6 +77,7 @@ function(i2pd_informational_probe flag budget out_output)
     OUTPUT_VARIABLE probe_output
     ERROR_VARIABLE probe_error
     TIMEOUT ${budget})
+  i2pd_require_clean_stderr(probe_error)
   set(captured "${probe_output}${probe_error}")
   if(NOT probe_result MATCHES "^[0-9]+$")
     message(FATAL_ERROR

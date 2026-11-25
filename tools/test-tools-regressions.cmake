@@ -9,6 +9,8 @@
 # searches are avoided, and ephemeral keys are removed.
 #
 
+include("${CMAKE_CURRENT_LIST_DIR}/../build/cmake/SanitizerReports.cmake")
+
 # Standalone scripts run with `cmake -P` have no
 # cmake_minimum_required(). CMP0012 OLD treats TRUE/FALSE as
 # variable names, so a boolean-valued condition would silently
@@ -80,6 +82,7 @@ function(run_tool name expect_success)
       ERROR_VARIABLE error
       TIMEOUT 30)
   endif()
+  i2pd_require_clean_stderr(error)
   if("${result}" STREQUAL "Process terminated due to timeout")
     fail("${name} exceeded the 30 s timeout")
   endif()
@@ -110,6 +113,7 @@ function(run_tool_to_file name output_file expect_success)
     OUTPUT_FILE "${output_file}"
     ERROR_VARIABLE error
     TIMEOUT 30)
+  i2pd_require_clean_stderr(error)
   if("${result}" STREQUAL "Process terminated due to timeout")
     fail("${name} exceeded the 30 s timeout")
   endif()

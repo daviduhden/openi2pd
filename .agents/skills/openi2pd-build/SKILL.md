@@ -111,6 +111,11 @@ build.
 
 ## Known issues and decisions
 
+For native and fuzz CTest entries, apply the shared sanitizer report
+patterns to captured output. Forked cases can leave their diagnostics
+on inherited stderr even when the enclosing test exits successfully.
+Match report headers to allow ordinary sanitizer startup banners.
+
 - Gate the OpenSSL branch action's full and focused CTest, version,
   label and Perl checks on the native build outcome. A broad CTest
   failure must remain fatal while still producing the independent

@@ -9,6 +9,8 @@
 # network.
 #
 
+include("${CMAKE_CURRENT_LIST_DIR}/../build/cmake/SanitizerReports.cmake")
+
 if(NOT DEFINED TOOLS_DIR)
   message(FATAL_ERROR "TOOLS_DIR is required")
 endif()
@@ -27,6 +29,7 @@ function(run_tool name)
     RESULT_VARIABLE result
     OUTPUT_VARIABLE output
     ERROR_VARIABLE error)
+  i2pd_require_clean_stderr(error)
   if(NOT result EQUAL 0)
     message(FATAL_ERROR "${name} failed (${result}): ${output}${error}")
   endif()
@@ -99,6 +102,7 @@ execute_process(COMMAND "${ROUTERINFO_FIXTURE_HELPER}" "${WORK}/valid-routerinfo
   RESULT_VARIABLE fixture_result
   OUTPUT_VARIABLE fixture_output
   ERROR_VARIABLE fixture_error)
+i2pd_require_clean_stderr(fixture_error)
 if(NOT fixture_result EQUAL 0 OR NOT EXISTS "${WORK}/valid-routerinfo.dat")
   message(FATAL_ERROR "RouterInfo fixture helper failed (${fixture_result}): ${fixture_output}${fixture_error}")
 endif()
@@ -220,12 +224,20 @@ foreach(expected
   endif()
 endforeach()
 
+# These CLI refusals return 1. A signal or execution error is a defect.
+function(require_rejection result scenario)
+  if(NOT "${result}" STREQUAL "1")
+    message(FATAL_ERROR "${scenario}: expected exit 1, received ${result}")
+  endif()
+endfunction()
+
 # Usage errors go to stderr only; explicit help stays on stdout.
 # The synopsis starts with argv[0], so compare only its fixed part: a
 # needle containing the bare tool name would fail whenever the binary is
 # addressed through a build path (Windows ".exe", MSYS2 prefix).
 execute_process(COMMAND "${TOOLS_DIR}/routerinfo${EXE}"
   RESULT_VARIABLE usage_result OUTPUT_VARIABLE usage_output ERROR_VARIABLE usage_error)
+i2pd_require_clean_stderr(usage_error)
 if(NOT usage_result EQUAL 1)
   message(FATAL_ERROR "routerinfo without operands exited ${usage_result}")
 endif()
@@ -247,78 +259,55 @@ execute_process(COMMAND "${TOOLS_DIR}/routerinfo${EXE}" --firewall=iptables
   valid-routerinfo.dat "${WORK}/malformed-routerinfo.dat"
   WORKING_DIRECTORY "${WORK}"
   RESULT_VARIABLE mixed_result OUTPUT_VARIABLE mixed_output ERROR_VARIABLE mixed_error)
-if(mixed_result EQUAL 0)
-  message(FATAL_ERROR "routerinfo accepted a malformed second RouterInfo")
-endif()
+i2pd_require_clean_stderr(mixed_error)
+require_rejection("${mixed_result}" "second malformed RouterInfo")
 if(NOT mixed_output STREQUAL "")
   message(FATAL_ERROR "routerinfo left partial rules on stdout: ${mixed_output}")
 endif()
 
 execute_process(COMMAND "${TOOLS_DIR}/routerinfo${EXE}" --firewall=bogus
   RESULT_VARIABLE bad_backend)
-if(bad_backend EQUAL 0)
-  message(FATAL_ERROR "routerinfo accepted an unknown firewall backend")
-endif()
+require_rejection("${bad_backend}" "unknown firewall backend")
 
 execute_process(COMMAND "${TOOLS_DIR}/routerinfo${EXE}" --firewall=nftables "--nft-table=bad\;name" keys.dat
   RESULT_VARIABLE bad_table)
-if(bad_table EQUAL 0)
-  message(FATAL_ERROR "routerinfo accepted an unsafe nftables table name")
-endif()
+require_rejection("${bad_table}" "unsafe nftables table")
 
 execute_process(COMMAND "${TOOLS_DIR}/routerinfo${EXE}" -f --firewall=pf keys.dat
   RESULT_VARIABLE conflicting)
-if(conflicting EQUAL 0)
-  message(FATAL_ERROR "routerinfo accepted conflicting firewall options")
-endif()
+require_rejection("${conflicting}" "conflicting firewall options")
 
 execute_process(COMMAND "${TOOLS_DIR}/routerinfo${EXE}" -f --firewall=pf
   RESULT_VARIABLE conflicting_no_operand)
-if(conflicting_no_operand EQUAL 0)
-  message(FATAL_ERROR "routerinfo reported usage before the -f/--firewall conflict")
-endif()
+require_rejection("${conflicting_no_operand}" "conflicting firewall options without operand")
 
 execute_process(COMMAND "${TOOLS_DIR}/routerinfo${EXE}" -f --nft-family=ip keys.dat
   RESULT_VARIABLE legacy_nft)
-if(legacy_nft EQUAL 0)
-  message(FATAL_ERROR "routerinfo accepted -f with nftables options")
-endif()
+require_rejection("${legacy_nft}" "nftables options with -f")
 
 execute_process(COMMAND "${TOOLS_DIR}/routerinfo${EXE}" --firewall=nftables --nft-family=ip6 keys.dat
   RESULT_VARIABLE nft_ip6_without_v6)
-if(nft_ip6_without_v6 EQUAL 0)
-  message(FATAL_ERROR "routerinfo accepted --nft-family=ip6 without -6")
-endif()
+require_rejection("${nft_ip6_without_v6}" "IPv6 nftables without -6")
 
 execute_process(COMMAND "${TOOLS_DIR}/routerinfo${EXE}" -y --firewall=pf keys.dat
   RESULT_VARIABLE yggdrasil_without_v6)
-if(yggdrasil_without_v6 EQUAL 0)
-  message(FATAL_ERROR "routerinfo accepted -y firewall output without -6")
-endif()
+require_rejection("${yggdrasil_without_v6}" "Yggdrasil output without -6")
 
 execute_process(COMMAND "${TOOLS_DIR}/routerinfo${EXE}" "--nft-family=ip" keys.dat
   RESULT_VARIABLE nft_without_backend)
-if(nft_without_backend EQUAL 0)
-  message(FATAL_ERROR "routerinfo accepted nftables options without --firewall=nftables")
-endif()
+require_rejection("${nft_without_backend}" "nftables option without backend")
 
 execute_process(COMMAND "${TOOLS_DIR}/routerinfo${EXE}" --firewall=nftables --nft-family=inet6 keys.dat
   RESULT_VARIABLE bad_family)
-if(bad_family EQUAL 0)
-  message(FATAL_ERROR "routerinfo accepted an invalid nftables family")
-endif()
+require_rejection("${bad_family}" "unknown nftables family")
 
 execute_process(COMMAND "${TOOLS_DIR}/routerinfo${EXE}" --firewall=nftables --nft-chain=input keys.dat
   RESULT_VARIABLE inbound_chain)
-if(inbound_chain EQUAL 0)
-  message(FATAL_ERROR "routerinfo accepted an inbound nftables chain")
-endif()
+require_rejection("${inbound_chain}" "inbound nftables chain")
 
 execute_process(COMMAND "${TOOLS_DIR}/routerinfo${EXE}" --firewall=pf "--nft-chain=output" keys.dat
   RESULT_VARIABLE nft_chain_without_nft)
-if(nft_chain_without_nft EQUAL 0)
-  message(FATAL_ERROR "routerinfo accepted nftables options with a non-nft backend")
-endif()
+require_rejection("${nft_chain_without_nft}" "nftables chain with pf")
 
 # A malformed RouterInfo must be rejected before hash/address access in
 # every backend, including the legacy -f path.
@@ -327,16 +316,12 @@ foreach(firewall_mode iptables nftables windows pf)
   execute_process(COMMAND "${TOOLS_DIR}/routerinfo${EXE}"
     "--firewall=${firewall_mode}" "${WORK}/malformed-routerinfo.dat"
     RESULT_VARIABLE malformed_routerinfo)
-  if(malformed_routerinfo EQUAL 0)
-    message(FATAL_ERROR "routerinfo accepted a malformed RouterInfo with ${firewall_mode}")
-  endif()
+  require_rejection("${malformed_routerinfo}" "malformed RouterInfo with ${firewall_mode}")
 endforeach()
 execute_process(COMMAND "${TOOLS_DIR}/routerinfo${EXE}" -f
   "${WORK}/malformed-routerinfo.dat"
   RESULT_VARIABLE malformed_legacy)
-if(malformed_legacy EQUAL 0)
-  message(FATAL_ERROR "routerinfo accepted a malformed RouterInfo with legacy -f")
-endif()
+require_rejection("${malformed_legacy}" "malformed RouterInfo with -f")
 
 # vain: help and validation paths only; never start a search in the
 # smoke test.
@@ -347,26 +332,18 @@ endif()
 
 execute_process(COMMAND "${TOOLS_DIR}/vain${EXE}" -t 0 example
   RESULT_VARIABLE bad_threads)
-if(bad_threads EQUAL 0)
-  message(FATAL_ERROR "vain accepted a zero thread count")
-endif()
+require_rejection("${bad_threads}" "zero thread count")
 
 execute_process(COMMAND "${TOOLS_DIR}/vain${EXE}" -r "("
   RESULT_VARIABLE bad_regex)
-if(bad_regex EQUAL 0)
-  message(FATAL_ERROR "vain accepted an invalid regular expression")
-endif()
+require_rejection("${bad_regex}" "invalid regular expression")
 
 execute_process(COMMAND "${TOOLS_DIR}/vain${EXE}" "NOT-BASE32"
   RESULT_VARIABLE bad_prefix)
-if(bad_prefix EQUAL 0)
-  message(FATAL_ERROR "vain accepted a non-base32 prefix")
-endif()
+require_rejection("${bad_prefix}" "invalid base32 prefix")
 
 execute_process(COMMAND "${TOOLS_DIR}/vain${EXE}" -s ECDSA-P256 example
   RESULT_VARIABLE bad_signature)
-if(bad_signature EQUAL 0)
-  message(FATAL_ERROR "vain accepted an unsupported signature type")
-endif()
+require_rejection("${bad_signature}" "unsupported signature type")
 
 file(REMOVE_RECURSE "${WORK}")

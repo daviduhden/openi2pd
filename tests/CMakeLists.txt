@@ -18,6 +18,8 @@ if(WITH_ADDRSANITIZER OR WITH_THREADSANITIZER OR WITH_UNDEFSANITIZER)
   set(I2PD_TEST_TIMEOUT 300)
 endif()
 
+include("${PROJECT_ROOT}/build/cmake/SanitizerReports.cmake")
+
 # Keep assertions enabled on the test executable even in Release.
 # The linked production archives retain their own build flags.
 function(i2pd_add_test name)
@@ -68,6 +70,7 @@ function(i2pd_add_test name)
   i2pd_enable_sanitizers(${name})
   add_test(NAME ${name} COMMAND ${name})
   set_tests_properties(${name} PROPERTIES TIMEOUT ${I2PD_TEST_TIMEOUT})
+  set_property(TEST ${name} PROPERTY FAIL_REGULAR_EXPRESSION "${I2PD_SANITIZER_REPORT}")
 endfunction()
 
 # The BitTorrent client can be compiled out. Keep its engine tests in a
@@ -863,6 +866,7 @@ if(WITH_FUZZERS)
         COMMAND ${fuzzer} -runs=1 -timeout=25 -max_len=${_fuzz_max_len}
           -artifact_prefix=${_fuzz_artifacts}/)
     endif()
+    set_property(TEST fuzz-smoke-${fuzzer} PROPERTY FAIL_REGULAR_EXPRESSION "${I2PD_SANITIZER_REPORT}")
     set_tests_properties(fuzz-smoke-${fuzzer} PROPERTIES
       WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
       LABELS "fuzz;smoke"

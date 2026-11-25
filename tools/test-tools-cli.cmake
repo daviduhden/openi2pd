@@ -9,6 +9,8 @@
 # access and no long searches.
 #
 
+include("${CMAKE_CURRENT_LIST_DIR}/../build/cmake/SanitizerReports.cmake")
+
 if(NOT DEFINED TOOLS_DIR)
   message(FATAL_ERROR "TOOLS_DIR is required")
 endif()
@@ -48,6 +50,7 @@ function(run_cli name out_var err_var)
       ERROR_VARIABLE error
       TIMEOUT 30)
   endif()
+  i2pd_require_clean_stderr(error)
   if(NOT "${result}" MATCHES "^-?[0-9]+$")
     fail("${name} did not exit normally (${result})")
   endif()
@@ -372,6 +375,7 @@ execute_process(
   COMMAND "${TOOLS_DIR}/regaddr${EXE}" missing-registration.keys ""
   WORKING_DIRECTORY "${WORK}"
   RESULT_VARIABLE LAST_RESULT OUTPUT_VARIABLE out ERROR_VARIABLE err TIMEOUT 30)
+i2pd_require_clean_stderr(err)
 expect_code(2 "regaddr rejects an explicit empty name")
 expect_empty("${out}" "regaddr empty-name stdout")
 expect_contains("${err}" "must not be empty" "regaddr empty-name reason")

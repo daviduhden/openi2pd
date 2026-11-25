@@ -476,7 +476,11 @@ made.
 The commands below are the CI contract; they are not local execution results.
 The manual workflow runs ASan+UBSan together, UBSan-only (to expose undefined
 behaviour that the combined run can mask) and TSan separately, then executes
-the full CTest suite serially. Sanitizer findings are not suppressed.
+the full CTest suite serially. Native test and fuzz registrations reject
+sanitizer report headers in captured output. Tool drivers also check
+child stderr because a parent can consume a child failure as an expected
+CLI rejection. Invalid invocations with a documented status must return
+that exact status.
 
 ```sh
 cmake -S build -B build-asan -G Ninja \

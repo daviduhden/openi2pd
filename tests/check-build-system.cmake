@@ -506,6 +506,38 @@ if(_test_log_support EQUAL -1 OR _test_log_api EQUAL -1 OR _test_log_append EQUA
     "is documented in docs/testing.md")
 endif()
 
+# Each executing native registration needs the sanitizer output gate.
+# A parent can consume a worker's exit status as an expected refusal.
+foreach(_registration IN ITEMS
+    [=[set_property(TEST ${name} PROPERTY FAIL_REGULAR_EXPRESSION "${I2PD_SANITIZER_REPORT}")]=]
+    [=[set_property(TEST fuzz-smoke-${fuzzer} PROPERTY FAIL_REGULAR_EXPRESSION "${I2PD_SANITIZER_REPORT}")]=])
+  string(FIND "${tests_cmake_text}" "${_registration}" _sanitizer_property)
+  if(_sanitizer_property EQUAL -1)
+    message(FATAL_ERROR "Missing sanitizer output check: ${_registration}")
+  endif()
+endforeach()
+
+include("${PROJECT_ROOT}/build/cmake/SanitizerReports.cmake")
+foreach(_diagnostic IN ITEMS
+    "==42==ERROR: AddressSanitizer: heap-use-after-free"
+    "==42==ERROR: LeakSanitizer: detected memory leaks"
+    "WARNING: ThreadSanitizer: data race"
+    "source.cpp:10:11: runtime error: signed integer overflow"
+    "SUMMARY: UndefinedBehaviorSanitizer: undefined-behavior"
+    "AddressSanitizer:DEADLYSIGNAL")
+  set(_recognized 0)
+  foreach(_pattern IN LISTS I2PD_SANITIZER_REPORT)
+    if(_diagnostic MATCHES "${_pattern}")
+      set(_recognized 1)
+    endif()
+  endforeach()
+  if(NOT _recognized)
+    message(FATAL_ERROR "Unrecognized sanitizer report header: ${_diagnostic}")
+  endif()
+endforeach()
+set(_ordinary_banner "AddressSanitizer Init done")
+i2pd_require_clean_stderr(_ordinary_banner)
+
 # The compile-free Doxygen parameter guard must stay registered: the
 # source-docs lane is the only place Doxygen itself runs, so a static lane
 # is what catches the recurring partial-@param defect before it.

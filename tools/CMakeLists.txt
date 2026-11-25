@@ -304,6 +304,7 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
   include("${PROJECT_ROOT}/build/cmake/TestAssertions.cmake")
   i2pd_enable_test_assertions(test-tools-getopt)
   i2pd_enable_sanitizers(test-tools-getopt)
+  include("${PROJECT_ROOT}/build/cmake/SanitizerReports.cmake")
   add_test(NAME tools-getopt COMMAND test-tools-getopt)
   set_tests_properties(tools-getopt PROPERTIES LABELS "tools;cli;unit" TIMEOUT 30)
 
@@ -333,6 +334,9 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
       "-DCMAKE_EXECUTABLE_SUFFIX=${CMAKE_EXECUTABLE_SUFFIX}"
       -P "${CMAKE_CURRENT_SOURCE_DIR}/test-tools-regressions.cmake")
   set_tests_properties(tools-regressions PROPERTIES TIMEOUT 600 LABELS "tools;cli;integration")
+
+  set_property(TEST tools-getopt tools-cli tools-smoke tools-regressions
+    PROPERTY FAIL_REGULAR_EXPRESSION "${I2PD_SANITIZER_REPORT}")
 
   add_test(NAME tools-inventory
     COMMAND ${CMAKE_COMMAND}
