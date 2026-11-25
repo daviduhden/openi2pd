@@ -134,6 +134,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Install distribution Perl tooling
+        id: perl_tooling
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
@@ -146,13 +147,15 @@ jobs:
             perl -c "$file"
           done < <(git ls-files -z '*.pl' '*.pm' '*.t' 'tools/scripts/i2pdctl')
       - name: Run Test::More suites
-        run: >-
-          prove -v tools/tests/i2pdctl.t tools/tests/validate-branding.t
-          tools/tests/perl-portability.t tools/tests/maintenance-checkers.t
-          tools/tests/make-drivers.t tools/tests/interop-helpers.t
-          tests/agent_knowledge_validator/test_validator.t
-          tests/android-javadoc-regex.t
+        shell: bash
+        run: |
+          prove -v tools/tests/i2pdctl.t tools/tests/validate-branding.t \
+            tools/tests/perl-portability.t tools/tests/maintenance-checkers.t \
+            tools/tests/make-drivers.t tools/tests/interop-helpers.t \
+            tests/agent_knowledge_validator/test_validator.t \
+            tests/android-javadoc-regex.t 2>&1 | tee perl-test-more.txt
       - name: Run Perl::Critic
+        if: ${{ !cancelled() && steps.perl_tooling.outcome == 'success' }}
         shell: bash
         run: |
           mapfile -d '' -t perl_files < <(git ls-files -z '*.pl' '*.pm' '*.t' 'tools/scripts/i2pdctl')
@@ -169,6 +172,7 @@ jobs:
         with:
           name: perl-quality-diagnostics
           path: |
+            perl-test-more.txt
             perlcritic.txt
             perlcritic-findings.txt
           if-no-files-found: warn
