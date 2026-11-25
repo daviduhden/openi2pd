@@ -125,19 +125,24 @@ limit caused a failed allocation.
 
 The supervisor test image has two exact diagnostic entries:
 
-- `--diagnose-worker-initialization` creates one contained child, waits at
-  most 15 seconds after its deadline starts and allows two further seconds
-  for forced termination. Process creation itself is a synchronous Windows
-  API; the enclosing manual CI debugger also needs an outer deadline.
+- `--diagnose-worker-initialization` compares two contained launches of the
+  same fixture image. The baseline uses `CREATE_NO_WINDOW`; the comparison
+  uses `DETACHED_PROCESS`. They share a 15-second observation deadline,
+  with up to two further seconds for forced termination after timeout.
+  Process creation itself is a synchronous Windows API; the enclosing
+  manual CI debugger also needs an outer deadline.
 - The child receives only `--windows-startup-probe` and exits after checking
   startup standard handles. It never connects to a pipe, generates a nonce
   or enters the worker protocol. Both entries return before ordinary tests.
 
 `SpawnWindowsWorkerStartupProbe` uses the same contained creation path and
 default supervisor policy as the live fixture: restricted token, Job limits,
-mitigations and the three-handle NUL allowlist. Its public interface accepts
-only the fixture executable, with no caller-selected argument vector or
-weaker policy. Production worker parsing and authentication remain separate.
+mitigations and the three-handle NUL allowlist. Its interface accepts the
+fixture executable and a closed console-mode selector. The diagnostic
+records each PID for matching debugger events and preserves the baseline
+exit result even when the detached comparison succeeds. The comparison
+varies the console flag only; worker parsing, flags and authentication
+remain in their existing path.
 
 Child-following CDB may be used only with the parent diagnostic flag. Use
 code-location output such as `.lastevent`, `ln @rip` and `kc 40`; do not emit

@@ -102,6 +102,13 @@ execution. Ask for:
 
 ## Known issues and decisions
 
+- Compare console startup in the authority-free supervisor fixture.
+  Both console modes share the same image, restricted token, Job and
+  standard handle allowlist. Correlate debugger exits by the logged
+  PID and retain the baseline status. A denied console-host child
+  beside a subsystem attach failure is evidence for the comparison;
+  it does not establish the internal initializer's cause.
+
 After changing collector exit handling, inspect exact-run events before
 calling a nonzero debugger exit a collector bug. An authority-free parent
 can itself exit 1 after its worker fails. Deferred KERNELBASE symbols do

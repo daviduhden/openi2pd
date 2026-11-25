@@ -103,46 +103,63 @@ bool HasUsableWorkerStandardHandles ()
 	return true;
 }
 
-// This parent path never enters normal tests or creates an IPC nonce.
-// Child debugger tracing is safe only for this closed diagnostic mode.
-int DiagnoseWorkerInitialization ()
+int RunWorkerInitializationProbe (
+	const std::wstring & executable, WindowsStartupProbeConsole console, Clock::time_point deadline)
 {
-	const auto executable = SelfExecutable ();
-	if (executable.empty ()) return 1;
-	const auto deadline = Clock::now () + std::chrono::seconds (15);
-	auto spawned = SpawnWindowsWorkerStartupProbe (executable);
-	if (!spawned)
+	const char * label
+		= console == WindowsStartupProbeConsole::Detached ? "startup comparison detached" : "startup probe";
+	if (Clock::now () >= deadline)
 	{
-		std::printf ("startup probe: contained spawn failed\n");
+		std::printf ("%s: comparison budget exhausted\n", label);
 		return 1;
 	}
+	auto spawned = SpawnWindowsWorkerStartupProbe (executable, console);
+	if (!spawned)
+	{
+		std::printf ("%s: contained spawn failed\n", label);
+		return 1;
+	}
+	std::printf ("%s: pid=%lu\n", label, static_cast<unsigned long> (spawned->processId));
+	std::fflush (stdout);
 	if (!spawned->WaitUntil (deadline))
 	{
 		const bool reaped = spawned->TerminateAndWaitUntil (Clock::now () + std::chrono::seconds (2));
-		std::printf ("startup probe: wait failed, terminated=%u\n", reaped ? 1u : 0u);
+		std::printf ("%s: wait failed, terminated=%u\n", label, reaped ? 1u : 0u);
 		return 1;
 	}
 	DWORD code = 0;
 	if (!GetExitCodeProcess (spawned->process.Native (), &code))
 	{
-		std::printf ("startup probe: exit query failed\n");
+		std::printf ("%s: exit query failed\n", label);
 		return 1;
 	}
 	JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits { };
 	if (!QueryInformationJobObject (
 			spawned->job.Native (), JobObjectExtendedLimitInformation, &limits, sizeof (limits), nullptr))
 	{
-		std::printf ("startup probe: memory query failed, exit=%lu\n", static_cast<unsigned long> (code));
+		std::printf ("%s: memory query failed, exit=%lu\n", label, static_cast<unsigned long> (code));
 		return 1;
 	}
 	// These counters contain no arguments or authentication data.
 	// A near-limit peak does not establish allocation failure.
-	std::printf ("startup probe: exit=%lu peak_process=%llu peak_job=%llu limit_process=%llu limit_job=%llu\n",
+	std::printf ("%s: exit=%lu peak_process=%llu peak_job=%llu limit_process=%llu limit_job=%llu\n", label,
 		static_cast<unsigned long> (code), static_cast<unsigned long long> (limits.PeakProcessMemoryUsed),
 		static_cast<unsigned long long> (limits.PeakJobMemoryUsed),
 		static_cast<unsigned long long> (limits.ProcessMemoryLimit),
 		static_cast<unsigned long long> (limits.JobMemoryLimit));
 	return code == 0 ? 0 : 1;
+}
+
+// Both children are authority-free. Keep the baseline result even when
+// the detached comparison reaches main successfully.
+int DiagnoseWorkerInitialization ()
+{
+	const auto executable = SelfExecutable ();
+	if (executable.empty ()) return 1;
+	const auto deadline = Clock::now () + std::chrono::seconds (15);
+	const int baseline = RunWorkerInitializationProbe (executable, WindowsStartupProbeConsole::WorkerDefault, deadline);
+	(void)RunWorkerInitializationProbe (executable, WindowsStartupProbeConsole::Detached, deadline);
+	return baseline;
 }
 
 /*

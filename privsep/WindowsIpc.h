@@ -178,13 +178,10 @@ struct WindowsIsolationSupport
 	bool messageModePipes = true;
 };
 
-/// Report which mechanisms this build and host can actually enforce. It
-/// never
-/// enables anything: a mechanism the probe cannot confirm (for example
-/// LPAC,
-/// which needs a verified mitigation profile, not just userenv exports)
-/// stays
-/// reported as unavailable.
+/// Report available entry points for worker isolation. Spawn still
+/// has to configure each mechanism and handle any failures. This
+/// probe leaves LPAC unavailable because the exports alone cannot
+/// confirm the required mitigation profile.
 WindowsIsolationSupport ProbeWindowsIsolation ();
 
 /* Owns one Win32 handle; closes it exactly once. */
@@ -202,6 +199,7 @@ public:
 	WindowsHandle (const WindowsHandle &) = delete;
 	WindowsHandle & operator= (const WindowsHandle &) = delete;
 
+	/// Borrow the handle for the lifetime of the current ownership.
 	HANDLE Native () const { return m_Handle; }
 	bool IsValid () const { return m_Handle && m_Handle != INVALID_HANDLE_VALUE; }
 	void Reset (HANDLE handle = INVALID_HANDLE_VALUE);
@@ -329,6 +327,12 @@ i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorker (const std::
 	WindowsWorkerRole role, const std::wstring & pipeName, DWORD parentProcessId, DWORD parentSessionId,
 	const std::wstring & nonceHex, const WindowsAppContainer * container, const WindowsWorkerPolicy & policy);
 
+enum class WindowsStartupProbeConsole
+{
+	WorkerDefault,
+	Detached
+};
+
 /** Spawn a nonsecret diagnostic child under the supervisor policy.
  *
  * The image receives only --windows-startup-probe, with no pipe, nonce
@@ -336,10 +340,11 @@ i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorker (const std::
  * implementing that flag and retain the returned process/job until exit
  * or bounded termination. The production worker grammar is unchanged.
  * Token, Job memory/process limits, mitigations and NUL handle transfer
- * match SpawnWindowsWorker with the default supervisor policy. This
- * checks startup, not authenticated IPC or worker lifecycle.
+ * match SpawnWindowsWorker with the default supervisor policy. Detached
+ * varies only the console creation flag for this diagnostic.
  */
-i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorkerStartupProbe (const std::wstring & executable);
+i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorkerStartupProbe (
+	const std::wstring & executable, WindowsStartupProbeConsole console);
 
 /*
  * Windows local transport for the same versioned Message frames used by

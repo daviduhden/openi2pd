@@ -1638,7 +1638,8 @@ namespace
 	enum class WindowsSpawnMode
 	{
 		Worker,
-		StartupProbe
+		StartupProbe,
+		StartupProbeDetached
 	};
 
 	// The probe changes only the fixed command grammar, not containment.
@@ -1941,7 +1942,9 @@ namespace
 			// together.
 			startup.StartupInfo.cb = static_cast<DWORD> (extended ? sizeof (startup) : sizeof (STARTUPINFOW));
 			startup.lpAttributeList = attributes.list;
-			const DWORD creationFlags = CREATE_NO_WINDOW | CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT
+			const bool detachedProbe = mode == WindowsSpawnMode::StartupProbeDetached;
+			const DWORD consoleFlag = detachedProbe ? DETACHED_PROCESS : CREATE_NO_WINDOW;
+			const DWORD creationFlags = consoleFlag | CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT
 				| (extended ? EXTENDED_STARTUPINFO_PRESENT : 0u);
 			if (useContainer)
 				created = CreateProcessW (executable.c_str (), mutableCommandLine.data (), nullptr, nullptr, TRUE,
@@ -2008,10 +2011,13 @@ i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorker (const std::
 		parentSessionId, nonceHex, container, policy);
 }
 
-i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorkerStartupProbe (const std::wstring & executable)
+i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorkerStartupProbe (
+	const std::wstring & executable, WindowsStartupProbeConsole console)
 {
-	return SpawnContainedWindowsProcess (WindowsSpawnMode::StartupProbe, executable, WindowsWorkerRole::Supervisor, { },
-		0, 0, { }, nullptr, GetWindowsWorkerPolicy (WindowsWorkerRole::Supervisor));
+	const bool detached = console == WindowsStartupProbeConsole::Detached;
+	const auto mode = detached ? WindowsSpawnMode::StartupProbeDetached : WindowsSpawnMode::StartupProbe;
+	return SpawnContainedWindowsProcess (mode, executable, WindowsWorkerRole::Supervisor, { }, 0, 0, { }, nullptr,
+		GetWindowsWorkerPolicy (WindowsWorkerRole::Supervisor));
 }
 
 bool WindowsWorkerProcess::Wait (DWORD timeoutMs) const
