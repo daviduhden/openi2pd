@@ -295,22 +295,12 @@ namespace crypto
 		OPENSSL_cleanse (priv, 32);
 		memset (pub, 0, 32);
 		X25519Keys k;
-		if (!k.GenerateKeys () || !k.HasPrivateKey ())
+		if (!k.GenerateKeys () || !k.GetPrivateKey (priv))
 		{
-			LogPrint (eLogError, "Crypto: X25519 key generation failed");
+			LogPrint (eLogError, "Crypto: X25519 key generation or export failed");
 			return false;
 		}
-		k.GetPrivateKey (priv);
 		memcpy (pub, k.GetPublicKey (), 32);
-		uint8_t acc = 0;
-		for (size_t i = 0; i < 32; ++i) acc |= priv[i] | pub[i];
-		if (!acc)
-		{
-			LogPrint (eLogError, "Crypto: generated X25519 key pair is empty");
-			OPENSSL_cleanse (priv, 32);
-			memset (pub, 0, 32);
-			return false;
-		}
 		return true;
 	}
 

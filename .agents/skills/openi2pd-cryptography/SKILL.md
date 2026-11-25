@@ -93,6 +93,10 @@ executing project code, or inspect a real private key.
 
 ## Known issues and decisions
 
+Treat provider key generation and private export as separate fallible
+operations. Check each half before publication. A valid public key
+cannot establish successful export of its private scalar.
+
 - Receive-tag generation and map publication are a distinct transaction from
   symmetric-key caching. Stage the chain/index until insertion succeeds and
   cleanse the staged value. Preserve existing exhaustion/collision semantics;

@@ -580,7 +580,7 @@ void RouterContext::NewNTCP2Keys ()
 		{
 			if (keys) OPENSSL_cleanse (keys.get (), sizeof (NTCP2PrivateKeys));
 		});
-	staticKeys->GetPrivateKey (keys->staticPrivateKey);
+	if (!staticKeys->GetPrivateKey (keys->staticPrivateKey)) throw std::runtime_error ("Router: NTCP2 static key export failed");
 	memcpy (keys->staticPublicKey, staticKeys->GetPublicKey (), 32);
 	i2p::crypto::FillRandomBytes (std::span { keys->iv, 16 });
 	// save
@@ -603,7 +603,7 @@ void RouterContext::NewSSU2Keys ()
 		{
 			if (keys) OPENSSL_cleanse (keys.get (), sizeof (SSU2PrivateKeys));
 		});
-	staticKeys->GetPrivateKey (keys->staticPrivateKey);
+	if (!staticKeys->GetPrivateKey (keys->staticPrivateKey)) throw std::runtime_error ("Router: SSU2 static key export failed");
 	memcpy (keys->staticPublicKey, staticKeys->GetPublicKey (), 32);
 	i2p::crypto::FillRandomBytes (std::span { keys->intro, 32 });
 	// save

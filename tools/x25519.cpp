@@ -73,7 +73,11 @@ int main (int argc, char * argv[])
 		return 1;
 	}
 	std::array<uint8_t, KEYSIZE> privateKey { };
-	keys.GetPrivateKey (privateKey.data ());
+	if (!keys.GetPrivateKey (privateKey.data ()))
+	{
+		std::cerr << "failed to export the X25519 private key" << std::endl;
+		return 1;
+	}
 
 	// Output contract: `PublicKey:` is safe to publish and belongs in
 	// `i2cp.leaseSetClient.dh.210`; `PrivateKey:` is the client credential

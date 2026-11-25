@@ -131,8 +131,8 @@ void TestX25519 ()
 	assert (IsAllZero (shared, 32));
 
 	// Export/reload must derive the same public key.
-	a.GetPrivateKey (privateA);
-	b.GetPrivateKey (privateB);
+	assert (a.GetPrivateKey (privateA));
+	assert (b.GetPrivateKey (privateB));
 	i2p::crypto::X25519Keys reloaded (privateA, nullptr);
 	assert (reloaded.HasPrivateKey ());
 	assert (memcmp (reloaded.GetPublicKey (), a.GetPublicKey (), 32) == 0);
@@ -151,7 +151,8 @@ void TestX25519 ()
 	assert (IsAllZero (rejected.GetPublicKey (), 32));
 	uint8_t rejectedPrivate[32];
 	memset (rejectedPrivate, 0xA5, sizeof (rejectedPrivate));
-	rejected.GetPrivateKey (rejectedPrivate);
+	assert (!rejected.GetPrivateKey (rejectedPrivate));
+	assert (!a.GetPrivateKey (nullptr));
 	assert (IsAllZero (rejectedPrivate, 32));
 	assert (!rejected.Agree (b.GetPublicKey (), shared));
 

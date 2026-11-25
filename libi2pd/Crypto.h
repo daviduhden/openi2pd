@@ -169,7 +169,9 @@ namespace crypto
 		///         an all-zero value when no usable private key is held. The
 		///         pointer refers to internal storage owned by this object.
 		const uint8_t * GetPublicKey () const { return m_PublicKey; };
-		void GetPrivateKey (uint8_t * priv) const;
+		/// Export a nonzero scalar into a caller-owned 32-byte buffer.
+		/// Failure clears the supplied buffer. A null buffer fails.
+		[[nodiscard]] bool GetPrivateKey (uint8_t * priv) const;
 		/// Load an existing 32-byte private scalar.
 		/// @param priv Private scalar, or null for an empty holder. An
 		///        all-zero scalar is rejected because X25519 clamps it to a

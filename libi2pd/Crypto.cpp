@@ -490,8 +490,10 @@ namespace crypto
 		}
 		EVP_PKEY_CTX_free (m_Ctx);
 		m_Ctx = EVP_PKEY_CTX_new (m_Pkey, NULL); // TODO: do we really need to re-create m_Ctx?
-		size_t len = 32;
-		if (!m_Ctx || EVP_PKEY_get_raw_public_key (m_Pkey, m_PublicKey, &len) != 1 || len != 32)
+		static constexpr uint8_t zero[32] { };
+		size_t len = sizeof (m_PublicKey);
+		if (!m_Ctx || EVP_PKEY_get_raw_public_key (m_Pkey, m_PublicKey, &len) != 1 || len != sizeof (m_PublicKey)
+			|| CRYPTO_memcmp (m_PublicKey, zero, sizeof (zero)) == 0)
 		{
 			LogPrint (eLogError, "X25519: failed to export generated public key");
 			memset (m_PublicKey, 0, sizeof (m_PublicKey));
@@ -550,11 +552,16 @@ namespace crypto
 		return ok;
 	}
 
-	void X25519Keys::GetPrivateKey (uint8_t * priv) const
+	bool X25519Keys::GetPrivateKey (uint8_t * priv) const
 	{
-		if (!priv) return;
-		size_t len = 32;
-		if (!m_Pkey || EVP_PKEY_get_raw_private_key (m_Pkey, priv, &len) != 1 || len != 32) memset (priv, 0, 32);
+		if (!priv) return false;
+		static constexpr uint8_t zero[32] { };
+		size_t len = sizeof (zero);
+		if (m_Pkey && EVP_PKEY_get_raw_private_key (m_Pkey, priv, &len) == 1 && len == sizeof (zero)
+			&& CRYPTO_memcmp (priv, zero, sizeof (zero)) != 0)
+			return true;
+		OPENSSL_cleanse (priv, sizeof (zero));
+		return false;
 	}
 
 	/*
