@@ -18,6 +18,21 @@ use File::Spec;
 use FindBin qw($Bin);
 use Test::More;
 
+sub code_token {
+    my ( $source, $offset ) = @_;
+    my $pair = substr( $source, $offset, 2 );
+    return ( 'line',  2, undef ) if $pair eq '//';
+    return ( 'block', 2, undef ) if $pair eq '/*';
+    my ( $token, $delimiter ) =
+      substr( $source, $offset ) =~ /\A((?:u8|u|U|L)?R"([^\s()\\]{0,16})\()/x;
+    return ( 'raw', length($token), ")${delimiter}\"" ) if defined $token;
+
+    my $char = substr( $source, $offset, 1 );
+    return ( 'string',    1, undef ) if $char eq '"';
+    return ( 'character', 1, undef ) if $char eq "'";
+    return ( 'code',      1, undef );
+}
+
 sub scan_comments {
     my ($source) = @_;
     my @errors;
@@ -26,40 +41,18 @@ sub scan_comments {
     my $state  = 'code';
     my $block_start;
     my $raw_end;
+    my %closing = ( string => '"', character => "'" );
 
     while ( $offset < length $source ) {
         my $pair = substr( $source, $offset, 2 );
         my $char = substr( $source, $offset, 1 );
 
         if ( $state eq 'code' ) {
-            if ( $pair eq '//' ) {
-                $state = 'line';
-                $offset += 2;
-                next;
-            }
-            if ( $pair eq '/*' ) {
-                $state       = 'block';
-                $block_start = $line;
-                $offset += 2;
-                next;
-            }
-
-            my $rest = substr( $source, $offset );
-            my ( $token, $delimiter ) =
-              $rest =~ /\A((?:u8|u|U|L)?R"([^\s()\\]{0,16})\()/x;
-            if ( defined $token ) {
-                $raw_end = ")${delimiter}\"";
-                $offset += length $token;
-                $state = 'raw';
-                next;
-            }
-            if ( $char eq '"' || $char eq "'" ) {
-                $state = $char eq '"' ? 'string' : 'character';
-                $offset++;
-                next;
-            }
+            my $width;
+            ( $state, $width, $raw_end ) = code_token( $source, $offset );
+            $block_start = $line if $state eq 'block';
             $line++ if $char eq "\n";
-            $offset++;
+            $offset += $width;
             next;
         }
 
@@ -99,22 +92,21 @@ sub scan_comments {
             }
             my $consumed =
               substr( $source, $offset, $end + length($raw_end) - $offset );
-            my $newlines = () = $consumed =~ /\n/g;
+            my $newlines = () = $consumed =~ / \n /gx;
             $line += $newlines;
             $offset = $end + length $raw_end;
             $state  = 'code';
             next;
         }
 
-        if ( $state eq 'string' || $state eq 'character' ) {
+        if ( exists $closing{$state} ) {
             if ( $char eq '\\' ) {
                 my $escaped = substr( $source, $offset + 1, 1 );
                 $line++ if $escaped eq "\n";
                 $offset += 2;
                 next;
             }
-            my $closing = $state eq 'string' ? '"' : "'";
-            if ( $char eq $closing ) {
+            if ( $char eq $closing{$state} ) {
                 $state = 'code';
             }
             $line++ if $char eq "\n";
@@ -131,14 +123,14 @@ sub scan_comments {
 my @nested = scan_comments("int f;\n/**\n/**\n */\n");
 like(
     $nested[0] // '',
-    qr/line 3: nested block-comment opener/,
+    qr/line\ 3:\ nested\ block-comment\ opener/x,
     'nested documentation comments are rejected'
 );
 
 my @unterminated = scan_comments("int f;\n/* missing close\n");
 like(
     $unterminated[0] // '',
-    qr/line 2: unterminated block comment/,
+    qr/line\ 2:\ unterminated\ block\ comment/x,
     'unterminated block comments are rejected'
 );
 
@@ -147,6 +139,14 @@ my @valid =
       . "auto b = R\"tag(/* raw string */)tag\"; // /* line comment */\n"
       . "/* ordinary closed comment */ int c;\n" );
 is( scalar @valid, 0, 'strings, raw strings and closed comments are accepted' );
+
+my @after_raw =
+  scan_comments("auto s = u8R\"tag(first\n/* raw text */)tag\";\n/*\n/*\n*/\n");
+is_deeply(
+    \@after_raw,
+    ['line 4: nested block-comment opener'],
+    'a multiline prefixed raw string preserves the next diagnostic line'
+);
 
 my $root = File::Spec->rel2abs(
     File::Spec->catdir( $Bin, File::Spec->updir, File::Spec->updir ) );
@@ -163,7 +163,7 @@ find(
                 }
                 return;
             }
-            return unless /\.(?:c|cc|cpp|cxx|h|hh|hpp|hxx)\z/i;
+            return unless / \. (?:c|cc|cpp|cxx|h|hh|hpp|hxx) \z /ix;
             push @source_files, $File::Find::name;
         },
     },
