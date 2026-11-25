@@ -2800,3 +2800,9 @@ Re-run the independent source contracts and native matrices after
 TF-2D04-01. Validate the exact SAF observer and mandoc changes before
 closing the API 29 and Windows documentation lanes. Continue using the
 closed loader probe for RT-087.
+
+## Windows validation after 49aee384
+
+Run the manual Windows workflow on the corrected revision. Require the
+compiled manual archive and the live worker handshake and shutdown.
+Keep the succeeded MSYS2 lane in the matrix.

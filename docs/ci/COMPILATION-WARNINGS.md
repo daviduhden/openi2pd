@@ -1462,3 +1462,38 @@ fatal mandoc diagnostics. HHC and CHM verification remain pending CI.
 The published arm64 lint and AGP/protobuf notices recur (CW-586-01).
 Runner Landlock capability notices recur (CW-586-02). The reviewed
 native logs showed no new first-party compiler warning.
+
+## CW-49AE-01 — Tools manual ordering
+
+The [compiled manual job](https://github.com/daviduhden/openi2pd/actions/runs/45688629580/job/139467831042)
+at `49aee384ffa934cf6e620fb1b83f2facce627053` retained both warnings in
+`windows-manual-evidence/manual-evidence/build.txt`. Cygwin mandoc reported
+`Sh FILES` out of conventional order at line 270 and `i2pd-tui after
+i2pdctl` at line 280 of the staged tools page. The canonical source is
+`man/openi2pd-tools.1`. Keep the strict warning threshold and rerun the
+manual target through HHC and archive verification.
+
+### CW-49AE-02 — Historical Windows channel initializer ordering
+
+The [MSYS2 build](https://github.com/daviduhden/openi2pd/actions/runs/40389743711/job/121807307977)
+on `b9cbdaa8abea9d7efa511aa02b90c7e8ef06869a` reported
+`-Wreorder-ctor` for the move constructor initializing `m_ReadBuffer`
+ahead of `m_Role` in its list. Revision `b6d93f8e` aligned the list
+with the member declarations in WindowsIpc.h. The current MSYS2 build
+passed without that diagnostic. CW-019 covers a separate logger case.
+
+## Android toolchain follow-up at 49aee384
+
+The [Android job](https://github.com/daviduhden/openi2pd/actions/runs/45688629426)
+still reports two ChromeOsAbiSupport warnings for the release ABI selection,
+the AGP built-in Kotlin opt-out deprecation and protobuf 3.25.5 Unsafe use.
+The x86_64 emulator job covers its own build variant.
+
+Protobuf upstream distinguishes standard generated Java code from
+Lite paths in its Unsafe migration. Confirm the Gradle tool dependency
+that resolves 3.25.5 before overriding any classpath. [Upstream tracking](https://github.com/protocolbuffers/protobuf/issues/20760)
+
+The local Java-only module uses `enableKotlin = false` and removes the
+deprecated global flag. The setter exists in the pinned AGP 9.4.1 API.
+Confirm class-file target 69, dexing and warning removal on the next
+Android build. [Android Gradle plugin migration timeline](https://developer.android.com/build/releases/gradle-plugin-roadmap)

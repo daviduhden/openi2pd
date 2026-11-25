@@ -9162,3 +9162,17 @@ Perl pass validates the earlier Perl cleanup. Prepared source-guard
 literal operands, CHM Perl inventory registration, roff corrections and
 a fixture-owned Binder death registration. These are Implemented /
 static and Pending CI tests. MSVC RT-087 remains open.
+
+## 49aee384 manual matrix
+
+Nine of ten workflows passed. Android API 29 executed 65 tests, including
+the previous SAF teardown failures. The Doxygen source contract and
+Perl inventory passed. Windows isolated manual section/reference order
+and the console launch flag as separate failures. Exact run links and
+validation limits are in [the batch inventory](docs/ci/TEST-FAILURES.md#49aee384-manual-batch).
+
+Static follow-up also corrected independent X25519 private export checks
+and deferred torrent availability, tightened Android XML evidence, and
+classified sanitizer output from native child processes. The published
+ASan+UBSan, UBSan, TSan and fuzz LastTest logs contained no report headers.
+The four supplemental warnings-as-errors runs use the published SHA.

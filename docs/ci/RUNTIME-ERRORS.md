@@ -3269,3 +3269,31 @@ after its arming marker. The source contract rejects stopping on that
 event, filtering all breakpoint exceptions and arming out of order.
 The comparison keeps the existing restricted token, Job and descriptor
 policy. Pending CI tests.
+
+## RT-087 — Console creation comparison at 49aee384
+
+The [MSVC job](https://github.com/daviduhden/openi2pd/actions/runs/45688629580/job/139467831101)
+at `49aee384ffa934cf6e620fb1b83f2facce627053` reports exit 3221225794
+before worker authentication. In its closed startup comparison the
+CREATE_NO_WINDOW child (PID 3744) exited 3221225794 and the DETACHED_PROCESS
+child (PID 5976) exited zero. Both retained the same 64 MiB process and job
+limits. Production authentication and shutdown still require the live test
+on the corrected revision.
+
+## RT-49AE-01 — X25519 private export failure (static finding)
+
+In the reviewed revision the ratchet key generator tested the combined
+bytes of two outputs. A valid public key masked a failed private-key
+export. GetPrivateKey now returns an explicit checked result to the
+ratchet generator, router NTCP2/SSU2 persistence and the x25519 tool.
+The existing X25519 audit fixture covers export and rejected output.
+Provider-matrix execution on these edits remains pending.
+
+## RT-49AE-02 — Deferred torrent HAVE after invalidation (static finding)
+
+A successful piece write can queue a HAVE before the service invalidates
+that piece. The final send now rechecks availability, using the same
+locked predicate as the peer bitfield and RPC pieces display. Persisted
+resume claims retain a distinct policy. The existing requests and
+verification suites now cover positive, saving and invalidated states.
+No failure of this path was observed in the published suite.

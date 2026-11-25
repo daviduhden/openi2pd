@@ -2606,3 +2606,10 @@ The repeated CMake diagnostic is a source-contract test failure
 (TF-2D04-01). The Windows documentation target stopped before HHC
 (CW-2D04-01). The reviewed logs did not identify a new first-party
 compiler or linker error.
+
+## 49aee384 compilation and linking
+
+The [manual batch](TEST-FAILURES.md#49aee384-manual-batch) exposed no
+new native compiler or linker diagnostic. Windows reached MSVC CTest.
+Its document generation command failed during mandoc processing;
+see CW-49AE-01. The HHC and archive stages remain unverified.

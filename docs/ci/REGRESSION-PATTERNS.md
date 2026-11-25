@@ -1095,3 +1095,17 @@ death registration. For teardown checks, retain an exact death observer
 through unbind and retire it on every outcome. When comparing contained
 child startup, record each exit separately and let ordinary loader
 breakpoints proceed without suppressing genuine exception events.
+
+For a worker startup comparison, correlate each child PID with its own
+terminal status under identical containment. Once a launch flag is
+changed, require the production authentication and stop path to pass as
+well as the isolated initialization probe. See RT-087.
+
+For a deferred availability announcement, test the state after invalidation
+at the actual send boundary; retain a positive announcement control.
+For paired key exports, check each provider result independently before
+either field becomes externally available.
+
+The Android SAF binding fixture now measures callback arrival against
+one absolute deadline. Instrumentation-thread scheduling after publication
+of the binder cannot by itself invalidate a timely callback.

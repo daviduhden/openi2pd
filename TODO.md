@@ -3033,5 +3033,14 @@ Implemented / static, Pending CI compilation and Pending CI tests.
 
 | ID | State | Remaining work |
 |---|---|---|
-| CI-2D04-01 | Implemented / static | Pending CI tests for the Doxygen source contract, Perl inventories, SAF death observer and CHM source lint. |
-| CI-2D04-02 | In progress | RT-087 requires the detached exit and baseline results under the same containment. The root cause of Windows worker initialization remains open. |
+| CI-2D04-01 | Pending CI tests | Doxygen, Perl inventories and SAF death observation passed on 49aee384. CHM progressed to the tools manual; see CI-49AE-01. |
+| CI-2D04-02 | Validated by CI | RT-087 comparison captured both exits under identical containment on 49aee384. Production handshake validation continues under CI-49AE-02. |
+
+## 49aee384 follow-up
+
+| ID | State | Acceptance |
+|---|---|---|
+| CI-49AE-01 | Pending CI tests | Generate the Windows manual after CW-49AE-01 and verify its archive and references. |
+| CI-49AE-02 | Pending CI tests | Exercise the corrected production worker launch through authentication and shutdown on MSVC. |
+| CI-49AE-03 | Pending CI tests | Verify X25519 export failure handling, strict child-result checks, sanitizer report classification and Android JUnit report controls. |
+| CI-49AE-04 | Pending CI tests | Confirm the peer/RPC availability rule, persisted resume claims and deferred HAVE regression. |

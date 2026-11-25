@@ -682,3 +682,7 @@ When a source guard checks a fixture diagnostic as text, keep the
 diagnostic in a literal operand and quote it when interpolating into a
 regex. Trace all markers consuming the same source file. A formatting
 rewrite can otherwise break multiple platform lanes after a clean build.
+
+For a strict manual generation failure, inspect the canonical page named
+by each diagnostic. A successful render of an earlier page leaves later
+pages and the help compiler unverified. See CW-49AE-01.

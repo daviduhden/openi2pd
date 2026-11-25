@@ -2131,3 +2131,44 @@ observer-lifetime correction.
 **TF-586-02 remote follow-up.** Artifact 15053938210 confirms 1587 passing
 Test::More cases across eight files and zero Perl::Critic findings on this
 SHA. Changes prepared after this batch remain pending CI.
+
+## 49aee384 manual batch
+
+All ten dispatches tested `49aee384ffa934cf6e620fb1b83f2facce627053`.
+Pagination returned 725 runs on 99 revisions (302 successful, 354 failed,
+69 cancelled). Those counts describe workflow conclusions. The table
+summarizes the ten full run logs for this revision.
+
+| Workflow | Evidence |
+|---|---|
+| [Linux](https://github.com/daviduhden/openi2pd/actions/runs/45688630282) | GCC 13 and Clang 17 floor builds, consumer and install passed. Historical vectors reported 24 static/vector successes and two known gaps. No differential binary ran. |
+| [Linux OpenSSL 3](https://github.com/daviduhden/openi2pd/actions/runs/45688630061) | GCC and Clang suites passed. |
+| [Linux OpenSSL 4](https://github.com/daviduhden/openi2pd/actions/runs/45688629998) | GCC and Clang suites passed. |
+| [OpenBSD](https://github.com/daviduhden/openi2pd/actions/runs/45688630024) | OpenBSD 8.0 selected 275 tests, with three skips in the main suite. Worker identity and credential checks passed in separate lanes. The OpenBSD torrent-storage test remained skipped. |
+| [Validation](https://github.com/daviduhden/openi2pd/actions/runs/45688630021) | ASan+UBSan, UBSan, TSan, 15 fuzz targets, Perl quality, source documentation and skill contracts passed. |
+| [Instrumented OpenSSL TSan](https://github.com/daviduhden/openi2pd/actions/runs/45688629776) | Dedicated diagnostic passed. |
+| [Packaging](https://github.com/daviduhden/openi2pd/actions/runs/45688629813) | All five jobs passed, including Debian packages and static musl. |
+| [Agent knowledge](https://github.com/daviduhden/openi2pd/actions/runs/45688629412) | Synchronization job passed. |
+| [Android](https://github.com/daviduhden/openi2pd/actions/runs/45688629426) | Arm64 build and unit tests passed. API 29 XML records 65 executed with zero failures, errors or skips, including SAF teardown. Release signing skipped. |
+| [Windows](https://github.com/daviduhden/openi2pd/actions/runs/45688629580) | MSYS2 passed with test-i2pcontrol-socket skipped. MSVC executed 36 selected tests and failed test-privsep-windows-supervisor. The independent manual target stopped before HHC. |
+
+Historical log collection retrieved 715 older run archives in addition
+to the ten current logs. Two cancelled runs supplied empty archives
+(39058841124 and 39058346321). Job metadata and individual log requests
+for their four jobs yielded no text. The historical diagnostic scan is
+pattern-based and cannot establish clean builds for every revision.
+
+Preventive review found two ways a passing fixture could misrepresent
+execution. The Android XML gate accepted reports with no executed case,
+and a log-worker negative fixture accepted unrelated child signals.
+The new guards check suite counts, child outcomes and sanitizer headers.
+Android's actual published reports contained 187 executed JVM tests
+and 65 API 29 tests. New guards remain pending CI.
+
+All-attempt job metadata for this inventory contains 2,061 entries.
+The reported native batch used warnings-as-errors OFF in the OpenSSL,
+OpenBSD and Windows lanes. Supplemental strict dispatches on the same
+published revision are [OpenSSL 3](https://github.com/daviduhden/openi2pd/actions/runs/45697402552),
+[OpenSSL 4](https://github.com/daviduhden/openi2pd/actions/runs/45697402768),
+[OpenBSD](https://github.com/daviduhden/openi2pd/actions/runs/45697402588)
+and [Windows](https://github.com/daviduhden/openi2pd/actions/runs/45697402030).
