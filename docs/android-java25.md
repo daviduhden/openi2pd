@@ -76,7 +76,7 @@ recorded in `docs/android-modernization.md` and the manual Android CI lane.
 | Java target / class-file | **25 / major 69** | task: `target=25`; `javap` reports major 69 |
 | Android Gradle Plugin | **9.4.1** | `android/build.gradle` |
 | D8/R8 (verification) | AGP 9.4.1-selected; **no repository pin** | historical standalone probe used R8 9.4.28, but that jar is not the artifact AGP resolves and is not covered by CI |
-| Kotlin | **disabled** (AGP 9.4.1 resolves Kotlin 2.2.10) | `android.builtInKotlin=false`; the version claim is a resolved-metadata observation, not a bundled JDK/ART fact |
+| Kotlin | **disabled** (AGP 9.4.1 resolves Kotlin 2.2.10) | module DSL `enableKotlin = false`; the version claim is a resolved-metadata observation, not a bundled JDK/ART fact |
 | compileSdk / targetSdk | **37** | unchanged in `android/app/build.gradle` |
 | SDK Build Tools | **36.0.0** | AGP 9.4 default; CI installs it explicitly |
 | minSdk | **29** | Android 10 minimum; raised from 24 |
@@ -175,12 +175,10 @@ not imply that the openi2pd APK, minified release or ART runtime is validated.
   minification and Lint settings were not changed. No JDK is bundled and core
   library desugaring is not enabled.
 
-`android/gradle.properties`:
-
-- Documents the JDK 25 requirement and keeps JDK auto-download disabled.
-- Sets `android.builtInKotlin=false` because AGP 9.4.1 otherwise creates an
-  unused Kotlin compile task that rejects JVM target 25. This is a workaround
-  for a Java-only application, not a reduction of the Java language level.
+The Java-only app sets `enableKotlin = false` on its Android extension.
+This prevents the plugin from configuring Kotlin compilation for Java 25.
+`android/gradle.properties` documents the JDK 25 requirement and keeps
+toolchain auto-download disabled.
 
 The Gradle wrapper (`9.8.1` plus SHA-256) and the AGP classpath (`9.4.1`) were
 left unchanged. CI remains manual-only.
@@ -326,8 +324,8 @@ Execution failed for task ':i2pd:tasks' (registered by plugin 'org.gradle.help-t
 
 AGP 9.4.1 resolves Kotlin 2.2.10, whose highest JVM target is 24. It creates a
 Kotlin compile task even for a Java-only app and derives its target from the
-Java target. Setting `android.builtInKotlin=false` makes the same task graph
-succeed:
+Java target. The historical check succeeded with the project-wide option
+`android.builtInKotlin=false`:
 
 ```sh
 JAVA_HOME=/path/to/jdk25 ANDROID_HOME=/path/to/android-sdk \
@@ -335,11 +333,10 @@ JAVA_HOME=/path/to/jdk25 ANDROID_HOME=/path/to/android-sdk \
 # BUILD SUCCESSFUL
 ```
 
-The option is itself deprecated: AGP warns that `android.builtInKotlin=false`
-will be removed in AGP 10.0. This is an unresolved forward-compatibility risk
-until the bundled Kotlin compiler supports JVM target 25 (or an equivalent
-supported configuration exists). The Java level was not lowered to make the
-warning go away.
+AGP deprecated the project-wide option. The pinned 9.4.1 API exposes
+`CommonExtension.enableKotlin` for individual modules. The app now uses
+that setting as recommended in the [Android Gradle plugin roadmap](https://developer.android.com/build/releases/gradle-plugin-roadmap).
+The task-graph result above predates the migration.
 
 AGP accepts the Java 25 source/target. A temporary init script printed the
 resolved compile task configuration:
@@ -480,8 +477,7 @@ honour `labelFor`.
   conversion is implemented statically; no on-device test has run.
 - Verify runtime behavior on API 29 and a current API level, including records
   and pattern switches.
-- Re-check AGP 10, where `android.builtInKotlin=false` is scheduled for
-  removal, and the Kotlin toolchain's JVM target support.
+- Verify the module-level Kotlin opt-out against the Java 25 task graph in CI.
 - Scan the app bytecode for references to the unavailable JDK APIs above.
 
 ## IPC/JNI boundary status (static)

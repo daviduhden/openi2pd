@@ -52,6 +52,8 @@ dependencies {
 }
 
 android {
+    // This Java-only module needs no Kotlin JVM target for Java 25.
+    enableKotlin = false
     namespace = 'org.openi2pd.router'
     compileSdk 37
     // NDK r30 LTS provides the current Clang/C++23 toolchain and

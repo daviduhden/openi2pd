@@ -60,8 +60,8 @@ source/target 25 is intentional: it compiles to class-file major 69, which
 D8/R8 converts to DEX for ART. It does not bundle a JDK and does not make
 JDK-only APIs available on Android; see
 [Java 25 on Android](../../android-java25.md). Do not lower the Java level to
-17 to work around the AGP 9.4.1 bundled-Kotlin target limit; the build keeps
-`android.builtInKotlin=false` and remains Java-only.
+17 to work around the AGP 9.4.1 bundled-Kotlin target limit. The Java-only
+app disables Kotlin compilation in its Android DSL with `enableKotlin = false`.
 
 For a vcpkg-based dependency prefix, use the corresponding
 `$VCPKG_ROOT/installed/<triplet>` path as `CMAKE_PREFIX_PATH`.

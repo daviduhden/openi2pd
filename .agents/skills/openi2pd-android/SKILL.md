@@ -600,7 +600,8 @@ does not resolve intentional ABI coverage or AGP deprecation findings.
 - The compile classpath resolves JDK 25 APIs: keep API-30+/33+
   collection/String/stream APIs and all virtual-thread/scoped-value/FFM/KDF
   APIs out of `src/main` and `androidTest`; `src/test` runs on the build JDK.
-  `android.builtInKotlin=false` is the AGP 9.4 workaround; document AGP 10.
+  Keep Kotlin compilation disabled through the app Android DSL. Check
+  `CommonExtension.enableKotlin` in the pinned AGP API on upgrades.
 - Every Java native declaration needs a header and `Java_*` definition;
   run `android/tools/check-android-jni-symbols.pl`. `noexcept` must match,
   `GetStringChars` needs an RAII owner, pending exceptions must be cleared, and

@@ -2368,9 +2368,9 @@ The Android classpath still resolves JDK 25 platform classes. Keep API-30+/33+
 `java.util`/`java.lang`/`Stream`/`String` conveniences and every virtual-thread,
 structured-concurrency, scoped-value, FFM, class-file or PEM/KDF API out of
 `src/main` and `androidTest` (unit tests under `src/test` run on the build JDK
-and are exempt). `android.builtInKotlin=false` is the current AGP 9.4 workaround
-because Kotlin's highest JVM target is 24; document the AGP 10 replacement
-instead of lowering Java. Core-library desugaring stays disabled; it cannot
+and are exempt). On AGP 9.4.1 the Java-only app disables Kotlin tasks
+through the module DSL (`enableKotlin = false`). Keep the Java 25 target
+when updating the plugin. Core-library desugaring stays disabled; it cannot
 provide Java 25 platform APIs.
 
 Every Java `native` declaration must have a matching checked-in header

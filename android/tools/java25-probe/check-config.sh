@@ -82,8 +82,11 @@ grep -Fq 'CMAKE_FIND_ROOT_PATH_MODE_PACKAGE BOTH' "$native_cmake" ||
 grep -Fq 'i2pd.abis' "$app_gradle" ||
 	fail 'ABI list is not property-driven'
 grep -Fq 'arm64-v8a' "$app_gradle" || fail 'default ABI is not arm64-v8a'
-grep -Fq 'android.builtInKotlin=false' "$properties" ||
-	fail 'AGP bundled-Kotlin target-25 workaround is missing'
+grep -Eq '^[[:space:]]*enableKotlin[[:space:]]*=[[:space:]]*false[[:space:]]*$' "$app_gradle" ||
+	fail 'the Java-only Android module must disable Kotlin compilation'
+if grep -Eq '^[[:space:]]*android[.]builtInKotlin([[:space:]]|[=:]|$)' "$properties"; then
+	fail 'deprecated project-wide Kotlin configuration'
+fi
 [ -d "$root/android/app/src/main/assets/certificates" ] ||
 	fail 'certificates asset symlink/target is missing or dangling'
 [ -f "$root/android/app/src/main/assets/i2pd.conf" ] ||
@@ -115,8 +118,6 @@ for older in 8 11 17 21 23 24; do
 		fail "Java level was silently reduced to $older"
 	fi
 done
-grep -Fq 'android.builtInKotlin=false' "$properties" ||
-	fail 'built-in Kotlin workaround is missing (Java 25 jvmTarget would fail task creation)'
 grep -Fq -- '--min-api 29' "$root/android/tools/java25-probe/verify-java25.sh" ||
 	fail 'Java 25 D8/R8 probe does not match minSdk 29'
 # Standalone dexing must use AGP's resolved artifact, never cache order.
