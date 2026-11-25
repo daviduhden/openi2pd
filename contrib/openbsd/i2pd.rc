@@ -49,7 +49,7 @@ daemon_flags="--foreground --service \
 	--tunconf=${SYSCONFDIR}/i2pd/tunnels.conf \
 	--tunnelsdir=${SYSCONFDIR}/i2pd/tunnels.conf.d \
 	--certsdir=${TRUEPREFIX}/share/i2pd/certificates \
-	--pidfile=${LOCALSTATEDIR}/i2pd/i2pd.pid \
+	--pidfile=${pidfile} \
 	--log=syslog"
 
 . /etc/rc.d/rc.subr

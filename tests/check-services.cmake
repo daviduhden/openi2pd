@@ -535,7 +535,7 @@ foreach(required IN ITEMS
     "--foreground"
     "--service"
     "--datadir=\${LOCALSTATEDIR}/i2pd"
-    "--pidfile=\${LOCALSTATEDIR}/i2pd/i2pd.pid"
+    "--pidfile=\${pidfile}"
     "tunnels.conf.d"
     "share/i2pd/certificates"
     "--log=syslog")

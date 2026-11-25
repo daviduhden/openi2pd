@@ -180,6 +180,10 @@ A no-op mutation failing is a fixture defect, not a product runtime failure.
   `tools/scripts/i2pdctl` to match the repository inventory.
 - Before replacing `return undef` with an empty return, check all callers.
   Scalar absence is preserved, but list-context cardinality changes.
+- For OpenBSD rc.d templates, follow the real `rc.subr` with ShellCheck
+  in an external projection when the host lacks that file. Its reads
+  account for framework-owned variables. Fix assignments that remain
+  unused with the framework in scope.
 
 
 - Android maintenance producers join three inventories: recursive discovery,
