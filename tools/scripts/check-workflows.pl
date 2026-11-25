@@ -1175,6 +1175,7 @@ sub windows_exception_command_errors {
     # Only the nonce-free probe may inspect termination status. Exact
     # lines keep nested breakpoint commands outside the heap allowlist.
     my %probe_commands = map { $_ => 1 } (
+        'sxn ibp',
 q{sxe -c "bu ntdll!NtTerminateProcess \".if (@edx == 0xc0000142) { .echo OPENI2PD_PROBE_TERMINATION; ln @rip; ln @$ra; ub @$ra L20; kc 40; }; gc\"; g" cpr},
         q{sxn -c ".echo OPENI2PD_PROBE_EXIT; .lastevent" epr},
 q{sxe -c ".echo OPENI2PD_PROBE_KERNELBASE; .reload /f kernelbase.dll; lmvm kernelbase; g" ld:kernelbase.dll}
@@ -1216,7 +1217,11 @@ q{sxe -c ".echo OPENI2PD_PROBE_KERNELBASE; .reload /f kernelbase.dll; lmvm kerne
     push @violations,
       'build-windows.yml: startup probe termination evidence missing'
       if $probe_mode
-      && ( keys(%probe_seen) != 5 || grep { $_ != 1 } values %probe_seen );
+      && ( keys(%probe_seen) != 6 || grep { $_ != 1 } values %probe_seen );
+    push @violations,
+      'build-windows.yml: startup probe must arm before the initial-break filter'
+      if $probe_mode
+      && index( join( "\n", @lines ), ".echo OPENI2PD_PROBE_ARMED\nsxn ibp\n" ) != 0;
     return @violations;
 }
 

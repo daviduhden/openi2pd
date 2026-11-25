@@ -682,6 +682,12 @@ sub windows_workflow_fixtures {
     for my $boundary (
         [ '@edx == 0xc0000142',         '@edx == 0' ],
         [ '.echo OPENI2PD_PROBE_ARMED', '.echo UNARMED' ],
+        [ 'sxn ibp',                   'sxe ibp' ],
+        [ 'sxn ibp',                   'sxn 0x80000003' ],
+        [
+            ".echo OPENI2PD_PROBE_ARMED\n          sxn ibp",
+            "sxn ibp\n          .echo OPENI2PD_PROBE_ARMED"
+        ],
         [ 'lmvm ntdll',                 'lmvm kernel32' ],
         [
 'OPENI2PD_PROBE_KERNELBASE; .reload /f kernelbase.dll; lmvm kernelbase; g',
@@ -1684,13 +1690,13 @@ sub doxygen_duplicate_parameter_fixtures {
     my ( $code, $out ) = run_checker( $doxygen_checker, '--root', $tmp );
     is( $code, 1,
         'Doxygen checker rejects a definition repeating header @param docs' );
+    my $duplicate = q{duplicate @param documentation for Load};
     like(
         $out,
         qr/\Q$duplicate\E/x,
         'declaration/definition duplicate names the function'
     );
     like(
-    my $duplicate = q{duplicate @param documentation for Load};
         $out,
         qr/probe\.h:\d+[ ]already[ ]documents[ ]it/x,
         'duplicate diagnostic points at the declaration'
@@ -1767,13 +1773,13 @@ sub doxygen_reference_fixtures {
           . "};\n" );
     my ( $code, $out ) = run_checker( $doxygen_checker, '--root', $tmp );
     is( $code, 1, 'Doxygen checker rejects an unresolved \@ref target' );
+    my $unknown_reference = q{unresolved @ref target 'mutex'};
     like(
         $out,
         qr/\Q$unknown_reference\E/x,
         'unresolved-reference diagnostic names the target'
     );
 
-    my $unknown_reference = q{unresolved @ref target 'mutex'};
     write_file( $header,
             "enum class StorageArtifact { A };\n"
           . "class Probe\n{\npublic:\n"
@@ -1803,13 +1809,13 @@ sub doxygen_block_command_fixtures {
           . "};\n" );
     my ( $code, $out ) = run_checker( $doxygen_checker, '--root', $tmp );
     is( $code, 1, 'Doxygen checker rejects a Javadoc inline tag' );
+    my $inline_tag = q{Javadoc inline tag in a C/C++ comment};
     like(
         $out,
         qr/\Q$inline_tag\E/x,
         'inline-tag diagnostic names the correct replacement'
     );
 
-    my $inline_tag = q{Javadoc inline tag in a C/C++ comment};
     write_file( $header,
             "class Probe\n{\npublic:\n"
           . "    /// Returns `ok`.\n"
@@ -1829,13 +1835,13 @@ sub doxygen_block_command_fixtures {
           . "};\n" );
     ( $code, $out ) = run_checker( $doxygen_checker, '--root', $tmp );
     is( $code, 1, 'Doxygen checker rejects an unclosed verbatim block' );
+    my $unbalanced = q{unbalanced @verbatim};
     like(
         $out,
         qr/\Q$unbalanced\E/x,
         'unbalanced-verbatim diagnostic names the block'
     );
     return;
-    my $unbalanced = q{unbalanced @verbatim};
 }
 doxygen_block_command_fixtures();
 

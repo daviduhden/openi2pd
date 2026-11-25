@@ -108,6 +108,8 @@ execution. Ask for:
   PID and retain the baseline status. A denied console-host child
   beside a subsystem attach failure is evidence for the comparison;
   it does not establish the internal initializer's cause.
+  In child-following CDB, retain the first arming stop and change
+  only subsequent loader initial breakpoints to notification.
 
 After changing collector exit handling, inspect exact-run events before
 calling a nonzero debugger exit a collector bug. An authority-free parent

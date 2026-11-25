@@ -525,9 +525,11 @@ jobs:
           # At each process creation, arm the x64 ExitStatus predicate;
           # print code locations only and preserve the real termination.
           # Stop initially so command-file execution is observable.
+          # Report later loader initial breaks without stopping on them.
           # The script resumes explicitly after arming its filters.
           @'
           .echo OPENI2PD_PROBE_ARMED
+          sxn ibp
           lmvm ntdll
           sxe -c ".echo OPENI2PD_PROBE_KERNELBASE; .reload /f kernelbase.dll; lmvm kernelbase; g" ld:kernelbase.dll
           sxe -c ".echo OPENI2PD_CRASH; .lastevent; ln @rip; kc 40; q" av

@@ -147,7 +147,10 @@ remain in their existing path.
 Child-following CDB may be used only with the parent diagnostic flag. Use
 code-location output such as `.lastevent`, `ln @rip` and `kc 40`; do not emit
 memory, registers, local variables, dumps or process-environment data. A
-normal supervisor test spawns nonce-bearing children and must remain under
+loader initial breakpoint in a followed child can stop CDB before that
+child emits its result. After the parent arming marker, use `sxn ibp`
+to report that event without stopping. Keep the existing crash filters.
+A normal supervisor test spawns nonce-bearing children and must remain under
 parent-only tracing. Retain the original live-test failure independently of
 this probe's exit and artifacts. The workflow records image SHA/revision
 and counter limits alongside separate debugger/stdout/stderr logs. A
