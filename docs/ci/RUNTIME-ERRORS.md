@@ -3156,3 +3156,40 @@ death, rebind and refusal of a replaced endpoint. Cross-process provider
 cancellation with an authorized live document remains open. Pending CI
 tests.
 [Android Binder calling identity](https://developer.android.com/reference/android/os/Binder#getCallingPid())
+
+## 652024d2 runtime evidence
+
+RT-087 recurred in MSVC job 139348852716, where the child exited
+3221225794 (0xC0000142) before authentication. Artifact 15044981607
+identifies the closed diagnostic image SHA-256
+`47CE421E225D10B61D590B384524928FE168833227520EC1DFF166C2B645641D`
+and matched KERNELBASE PDB `0792E1E7A24BB52249313BF74137D2B11`.
+DLL_PROCESS_ATTACH failed at the historical RVA 0x1b170. The internal
+operation and the relationship to the separate conhost exit remain open.
+[MSVC job](https://github.com/daviduhden/openi2pd/actions/runs/45654902545/job/139348852716)
+
+RT-486-01 has positive device evidence for authorized retirement,
+Binder death, reconnection and stale endpoint refusal in API 29 job
+139348849609. The operation-cancellation proxy asserts oneway wire
+behavior. Positive provider cancellation across process boundaries
+remains open.
+[Android job](https://github.com/daviduhden/openi2pd/actions/runs/45654906083/job/139348849609)
+
+The three sanitizer suites and separate OpenSSL 4.1.0 TSan probe have
+no reported sanitizer diagnostics in their reviewed logs. Leak detection
+was enabled in ASan and disabled in the bounded fuzz smoke lane.
+
+The local Android follow-up distinguishes a failed authority handshake from
+observed death and rechecks the caller's deadline before admitting document
+work after a slow handshake. The API 29 artifact 15042268322 also confirms
+four JNI metadata fixture passes. The local recovery changes remain pending.
+
+**RT-652-01.** Static review found that expiry lookup in
+`LeaseSetDestination::FindLeaseSet` previously erased by key after
+unlocking, so a replacement installed between the two lock scopes
+could disappear. The near-expiry completion also republished the
+verified result and could mutate an LS1 already visible to readers.
+The lookup now erases the selected iterator while holding the lock,
+and refresh leaves the result to DatabaseStore publication. The
+existing `test-destination-leaseset-session` and source-order
+contract cover the local correction. Pending CI tests.

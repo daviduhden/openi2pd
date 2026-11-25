@@ -3313,3 +3313,13 @@ synthetic producer for the setting and its old spelling. Verify positive
 fixture baselines before mutating an independent field. Obtain evidence for
 each prerequisite independently when one cross-platform fixture blocks
 later diagnostic phases.
+
+For Binder recovery, a thrown RemoteException does not confirm process
+death. Keep writer authority fenced until a matching death notification
+or a negative liveness check. Verify artifact types in packaging audits
+before inferring debug symbol completeness from successful main packages.
+
+For LeaseSet cache expiry, select and remove the same entry under the
+cache lock and release the retained owner outside it. Keep validated
+refresh publication in DatabaseStore processing so a deferred
+completion cannot overwrite or reparse a published snapshot.

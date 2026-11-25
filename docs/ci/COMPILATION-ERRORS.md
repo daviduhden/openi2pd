@@ -2553,3 +2553,15 @@ The native failing lanes in the [run matrix](TEST-FAILURES.md#029ffd46-manual-ba
 compiled and linked through their CTest selections. The shared locale
 fixture failure belongs to TF-029-01. Android API 29 dependency resolution
 stopped before instrumentation and is tracked as TF-029-02.
+
+## 652024d2 compilation and linking
+
+The [exact run matrix](TEST-FAILURES.md#652024d2-manual-batch) reached
+execution across Linux, OpenBSD, Windows and Android. The two failed
+workflows reached individual test or lint commands. The MSVC child
+startup fault remains runtime evidence under RT-087.
+
+The distribution floor used GCC 13.3.0 and Clang 17.0.6 with
+libstdc++ 13 and system OpenSSL 3.0.13. The rolling provider jobs used
+GCC 16.2.0 and Clang 23.1.6 with OpenSSL 3.5.9 or 4.1.0.
+OpenBSD 8.0 used Clang 22.1.6 with LibreSSL 4.4.0.

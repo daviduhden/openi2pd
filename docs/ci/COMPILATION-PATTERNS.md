@@ -650,3 +650,13 @@ file and its checker. Search by configuration key and former value.
 Gradle's Android resource qualifier `zh-rCN` differs from the locale
 metadata tag `zh-CN`. Preserve both spellings at their own boundaries.
 [TF-029-01](TEST-FAILURES.md#029ffd46-manual-batch)
+
+## Preserve semantics during Perl policy cleanup
+
+Keep significant whitespace explicit when adding regex extended mode.
+Check byte-normalization positives and refusal cases separately. Before
+opening an output stream, build the complete record when feasible and
+check failures both when writing it and when closing the stream. Keep
+multi-stage validation complete before the vector producer replaces any
+template.
+[TF-652-01](TEST-FAILURES.md#652024d2-manual-batch)

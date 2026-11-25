@@ -1387,3 +1387,22 @@ The artifact contains no debug-symbol package to establish the effect
 on its contents. Track the packaging-tool interaction separately.
 [Debian job](https://github.com/daviduhden/openi2pd/actions/runs/45487509869/job/138776710975)
 [elfutils DWARF extension registry](https://sourceware.org/elfutils/DwarfExtensions)
+
+## 652024d2 warning review
+
+The Android arm64 variants still report two ChromeOsAbiSupport
+diagnostics because the APK coverage is arm64. AGP's built-in Kotlin
+opt-out deprecation and protobuf's use of Unsafe appear in tool output.
+The native log scan found no new first-party compile warning. MSYS2
+emitted its updater diagnostic. The Debian debugedit issue CW-029-01
+recurs after dwz, although ordinary package checks passed.
+[Exact run matrix](TEST-FAILURES.md#652024d2-manual-batch)
+
+Artifact 15043457584 retains the Debian `.changes` manifest. It lists
+both generated debug packages (daemon 108621534 bytes, TUI 2113264 bytes).
+The previous artifact excluded those archives. The local workflow now
+retains the build transcript and uploads the debug packages with SHA-256
+checksums separately. Successful builds require nonempty debug evidence.
+The compatibility of the packaged debug information remains pending.
+[Debian workflow run](https://github.com/daviduhden/openi2pd/actions/runs/45654904135)
+[DWZ alternate debug formats](https://sourceware.org/elfutils/DwarfExtensions)

@@ -9061,3 +9061,20 @@ phases are Implemented / static and Pending CI tests. Real Binder
 retirement/death/rebind and stale endpoint cases are prepared. Positive
 cross-process provider cancellation remains Pending. Android API 29
 dependency caching is broadened only for the matching Gradle inputs.
+
+## 652024d2 CI follow-up
+
+TF-029-01 and the distinct OpenBSD credential probes are Validated by CI.
+Android API 29 validated SAF retirement/death/rebind and stale endpoint
+refusal. Positive cross-process provider cancellation remains Pending.
+RT-087 and the full Perl::Critic profile remain CI failure. Local focused
+Perl corrections and preventive diagnostics are Pending CI tests.
+[Batch inventory](docs/ci/TEST-FAILURES.md#652024d2-manual-batch)
+
+The Android handshake death fence and deadline review and Debian
+debug-symbol artifact collection are Implemented / static and
+Pending CI tests.
+
+Remote LeaseSet expiry and refresh publication (RT-652-01) are
+Implemented / static with a focused replacement regression and a
+source-order check. Pending CI compilation and Pending CI tests.

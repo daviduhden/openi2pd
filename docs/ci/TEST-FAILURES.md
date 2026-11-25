@@ -1965,3 +1965,38 @@ The Linux OpenSSL composite now collects focused torrent/client/profile
 results and standalone Perl evidence after successful compilation even
 if the broad CTest step fails. The existing output retains all JUnit
 files and each phase preserves its failure. Pending CI tests.
+
+## 652024d2 manual batch
+
+Paginated metadata covers 685 runs at 95 SHAs, with 276 successes,
+340 failures and 69 cancellations. The ten full logs below belong to
+652024d2d6081a15187a63d9094a160619dece07.
+
+| Run | Observed outcome |
+|---|---|
+| [Agent knowledge](https://github.com/daviduhden/openi2pd/actions/runs/45654900944) | Passed. |
+| [Validation](https://github.com/daviduhden/openi2pd/actions/runs/45654900993) | ASan+UBSan, UBSan and TSan each passed 279; fuzz smoke passed 15/15. Doxygen and agent checks passed. Test::More passed 1578 across eight files; Perl::Critic failed. |
+| [Provider TSan](https://github.com/daviduhden/openi2pd/actions/runs/45654901837) | Instrumented provider test passed. |
+| [Linux](https://github.com/daviduhden/openi2pd/actions/runs/45654901941) | GCC 13 and Clang 17 floor jobs each passed 279, and component install passed. Java interoperability checked the reference and historical vectors without a differential binary. |
+| [OpenBSD](https://github.com/daviduhden/openi2pd/actions/runs/45654902364) | 274 selected, three expected root-suite skips. Two dedicated non-root cases and the independent root-started credential drop passed. POSIX front-end build passed. |
+| [Windows](https://github.com/daviduhden/openi2pd/actions/runs/45654902545) | MSYS2 passed 262 with one expected AF_UNIX skip. MSVC passed 35/36, with RT-087 still failing. |
+| [OpenSSL 3](https://github.com/daviduhden/openi2pd/actions/runs/45654902946) | Both GCC and Clang passed 279 and the separate 10/3/9 focused selections. |
+| [OpenSSL 4](https://github.com/daviduhden/openi2pd/actions/runs/45654903617) | Both GCC and Clang passed 279 and the separate 10/3/9 focused selections. |
+| [Packaging](https://github.com/daviduhden/openi2pd/actions/runs/45654904135) | All five jobs passed. Debian debugedit diagnostics persisted. |
+| [Android](https://github.com/daviduhden/openi2pd/actions/runs/45654906083) | Arm64 build and JVM tests passed. API 29 JUnit recorded 65 passes, including stale-endpoint refusal and retirement/death/rebind. Signing skipped by input. |
+
+The posted revision validates TF-029-01 and the dedicated probes that
+were blocked in TF-029-03. The Android 429 did not recur. Positive device
+cancellation of a provider call across Binder remains separate evidence.
+
+**TF-652-01.** The repository severity-3, core-theme Perl::Critic report
+contains 830 findings and exited 2. Test::More had already passed.
+Local changes address a slice of the findings in the vector producer,
+documentation navigation, hex conversion and two command fixtures.
+The existing CI lanes cover the parser, packaging fixture and interop
+converter contracts. The remaining profile findings stay open.
+[Perl quality job](https://github.com/daviduhden/openi2pd/actions/runs/45654900993/job/139348838633)
+
+Android API 29 recorded a matching Gradle cache restore from arm64. The
+separate x86_64 native dependency cache missed. The build used Temurin
+25.0.5+8, Gradle 9.8.1 and AGP 9.4.1.

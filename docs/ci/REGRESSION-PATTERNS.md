@@ -1048,3 +1048,20 @@ the mutation to change the intended field and assert the corresponding
 diagnostic. When a common fixture affects multiple platform suites, group
 the failures by the shared source and retain each lane's result.
 [TF-029-01](TEST-FAILURES.md#029ffd46-manual-batch)
+
+## Distinguish Binder RPC failure from death
+
+A failed synchronous capability RPC does not establish remote process
+death. A replacement writer remains fenced while the old Binder is
+alive. Compare explicit liveness and death notification independently
+of a typed refusal or transport exception. Match the failure to the
+same connection before retiring its state.
+
+**RP-652-01.** A cache lookup that drops its lock before removing an
+expired entry must revalidate the entry identity. In
+`LeaseSetDestination::FindLeaseSet`, selection, expiry and removal now
+share one lock, with the previous owner retained outside the mutex.
+Verified DatabaseStore processing owns refresh publication. The
+session test checks expiry and replacement without clock delays,
+and the source contract pins the lock-scoped ordering. Static finding,
+not a reported failure on 652024d2. Pending CI tests.
