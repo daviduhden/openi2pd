@@ -56,7 +56,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * provider. Descriptor ownership stays in this service; no descriptor
  * is transferred to the router process.</p>
  */
-public final class TorrentSafStorageService extends Service {
+public class TorrentSafStorageService extends Service {
     /**
      * Wire contract version reported by {@link
      * ITorrentSafStorage#apiVersion()}.

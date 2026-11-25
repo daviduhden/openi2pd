@@ -3,7 +3,7 @@
  * license details. openi2pd: end-to-end contract regressions for the
  * real SAF broker process.
  *
- * Manual device CI only. The broker is hosted in ":torrent_storage", so
+ * Manual device CI only. The broker runs in the debug fixture process, so
  * these cases exercise the generated Binder stubs, the caller binding,
  * generation fenced retirement and a real rebind after process death.
  *
@@ -55,11 +55,11 @@ import org.junit.runner.RunWith;
 /*
  * Manual device-CI contract for the real SAF broker process.
  *
- * <p>Hosts nothing itself: it binds {@code :torrent_storage}, checks
- * the reported generation/API version, that a foreign operation id or
- * wrong owner is refused, that retirement is one-shot and
- * generation-fenced, and that a rebind after broker death reaches a
- * fresh generation. Payload IO through a real tree grant, foreign-UID
+ * <p>It binds the production broker implementation in a debug-only
+ * process. It checks the generation and API version, refusal of foreign
+ * operation IDs, one-shot retirement for the current generation, and
+ * rebind to a fresh generation. Payload IO through a real tree grant,
+ * foreign-UID
  * denial and a provider that ignores cancellation stay manual
  * scenarios; the provider-boundary cases live in {@link
  * TorrentSafProviderCancellationTest}.</p>
@@ -84,6 +84,7 @@ public final class TorrentSafBrokerContractTest {
 
     @After
     public void tearDown() {
+        IBinder previous = binder;
         if (connection != null && context != null) {
             try {
                 context.unbindService(connection);
@@ -93,6 +94,11 @@ public final class TorrentSafBrokerContractTest {
         }
         binder = null;
         broker = null;
+        // The fixture is the only client. Its last unbind must fence the
+        // process before another test can acquire control from a new one.
+        if (previous != null)
+            assertTrue("Fixture broker survived its last unbind",
+                    awaitDeath(previous, RETIRE_TIMEOUT_MS));
     }
 
     /*
@@ -118,8 +124,9 @@ public final class TorrentSafBrokerContractTest {
         connection = fresh;
         boolean requested;
         try {
-            requested = context.bindService(new Intent(context, TorrentSafStorageService.class),
-                    fresh, Context.BIND_AUTO_CREATE);
+            requested =
+                    context.bindService(new Intent(context, TorrentSafBrokerFixtureService.class),
+                            fresh, Context.BIND_AUTO_CREATE);
         } catch (SecurityException denied) {
             Assume.assumeNoException("SAF broker binding denied", denied);
             return;

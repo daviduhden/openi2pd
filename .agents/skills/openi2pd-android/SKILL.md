@@ -126,6 +126,12 @@ run Gradle, install an APK or run a device test.
 
 ## Known issues and decisions
 
+- Broker retirement instrumentation binds the non-exported debug fixture
+  service in its own process. It inherits the production Binder and
+  sandbox implementation while avoiding control replacement by the
+  router's reconnecting client. Observe Binder death after the fixture's
+  last unbind before allowing another case to acquire control.
+
 - Retain exact resource qualifiers in Gradle and check packaged configurations
   in debug and release APKs. Source parity can pass even when filtering drops
   the region-qualified Chinese catalog. Run Material view inflation on the

@@ -83,6 +83,7 @@ local.properties
 # Build results
 
 [Dd]ebug/
+!/android/app/src/debug/
 [Rr]elease/
 x64/
 [Bb]in/

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- See the LICENSE file at the top of the project tree for copyright
+    and license details. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Host real Binder retirement tests without the router's
+            reconnecting client replacing the fixture's control. -->
+        <service android:name=".TorrentSafBrokerFixtureService"
+            android:process=":torrent_storage_fixture" android:exported="false"
+            android:stopWithTask="false" />
+    </application>
+</manifest>
