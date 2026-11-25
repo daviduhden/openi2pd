@@ -40,7 +40,7 @@ sub display_path {
 
 binmode STDERR, ':encoding(UTF-8)' or die "cannot encode diagnostics\n";
 my $docs = path_octets( shift @ARGV // 'docs' );
-$docs =~ s{/+$}{};
+$docs =~ s{ /+$ }{}x;
 die "documentation directory not found: " . display_path($docs) . "\n"
   unless -d $docs;
 
@@ -122,7 +122,7 @@ my @files;
 find(
     {
         wanted => sub {
-            return unless -f $_ && /\.md\z/;
+            return unless -f $_ && / \.md\z /x;
             push @files, path_octets($File::Find::name);
         },
         no_chdir => 1,
@@ -151,7 +151,7 @@ sub markdown_lines {
     close $fh or die "cannot close Markdown file: $shown_path\n";
     my $text = eval { decode( 'UTF-8', $bytes, FB_CROAK ) };
     die "invalid UTF-8 in Markdown file: $shown_path\n" if $@;
-    my @lines = split /(?<=\n)/, $text;
+    my @lines = split / (?<=\n) /x, $text;
     return \@lines;
 }
 
@@ -160,12 +160,12 @@ sub markdown_lines {
 sub local_component {
     my ($component) = @_;
     return ( undef, 'invalid percent escape in local link' )
-      if $component =~ /%(?![0-9A-Fa-f]{2})/;
+      if $component =~ / %(?![0-9A-Fa-f]{2}) /x;
     my $bytes = encode( 'UTF-8', $component, FB_CROAK );
-    $bytes =~ s/%([0-9A-Fa-f]{2})/chr(hex($1))/ge;
+    $bytes =~ s/ %([0-9A-Fa-f]{2}) /chr(hex($1))/gex;
     my $decoded = eval { decode( 'UTF-8', $bytes, FB_CROAK ) };
     return ( undef,    'invalid UTF-8 in local link component' ) if $@;
-    return ( undef,    'NUL in local link component' ) if $decoded =~ /\0/;
+    return ( undef,    'NUL in local link component' ) if $decoded =~ / \0 /x;
     return ( $decoded, undef );
 }
 
@@ -175,12 +175,12 @@ sub slugify {
     # Must stay identical to the MkDocs/Python-Markdown slug rules; any
     # divergence turns every valid intra-page link into a false report.
     my $slug = lc $heading;
-    $slug =~ s/<[^>]+>//g;
-    $slug =~ s/`//g;
-    $slug =~ s/[^\p{L}\p{N}\s_-]//g;
-    $slug =~ s/\s+/-/g;
-    $slug =~ s/-+/-/g;
-    $slug =~ s/^-+|-+\z//g;
+    $slug =~ s/ <[^>]+> //gx;
+    $slug =~ s/ ` //gx;
+    $slug =~ s/ [^\p{L}\p{N}\s_-] //gx;
+    $slug =~ s/ \s+ /-/gx;
+    $slug =~ s/ -+ /-/gx;
+    $slug =~ s/ ^-+|-+\z //gx;
     return $slug;
 }
 
@@ -198,7 +198,7 @@ sub anchors_for {
         # Both forms must be recorded or a valid link is reported
         # missing.
         my $explicit;
-        if ( $heading =~ s/\s*\{#([A-Za-z0-9_.:-]+)\}\s*\z// ) {
+        if ( $heading =~ s/ \s*\{\#([A-Za-z0-9_.:-]+)\}\s*\z //x ) {
             $explicit = $1;
         }
         $anchors{$explicit} = 1 if defined $explicit;
@@ -211,17 +211,17 @@ sub anchors_for {
     my $in_fence = 0;
     my $previous = '';
     for my $line ( @{ markdown_lines($path) } ) {
-        $in_fence = !$in_fence if $line =~ /^\s*(?:```|~~~)/;
+        $in_fence = !$in_fence if $line =~ / ^\s*(?:```|~~~) /x;
         next                   if $in_fence;
-        if ( $line =~ /^\s{0,3}#{1,6}\s+(.+?)\s*\z/ ) {
+        if ( $line =~ / ^\s{0,3}\#{1,6}\s+(.+?)\s*\z /x ) {
             $add_heading->($1);
             $previous = '';
             next;
         }
-        if (   $line =~ /^\s{0,3}(?:=+|-+)\s*\z/
-            && $previous =~ /\S/
-            && $previous !~ /^\s*(?:[-*+]|\d+\.)\s/
-            && $previous !~ /^\s*\|/ )
+        if (   $line =~ / ^\s{0,3}(?:=+|-+)\s*\z /x
+            && $previous =~ / \S /x
+            && $previous !~ / ^\s*(?:[-*+]|\d+\.)\s /x
+            && $previous !~ / ^\s*\| /x )
         {
             # A setext underline promotes the previous line to a
             # heading. Table rows and list items share the '-' character
@@ -230,112 +230,92 @@ sub anchors_for {
             $previous = '';
             next;
         }
-        $previous = $line if $line =~ /\S/;
+        $previous = $line if $line =~ / \S /x;
     }
     $anchor_cache{$path} = \%anchors;
     return \%anchors;
 }
 
-my @missing;
-my @missing_anchors;
-for my $file ( sort @files ) {
+# Interpret Markdown targets and HTML image sources with the same
+# filesystem containment check. Only Markdown links carry an anchor.
+sub check_local_target {
+    my ( $file, $target, $is_image ) = @_;
+    return if $target              =~ m{ \A(?:[a-z][a-z0-9+.-]*:|//) }ix;
+    return if $is_image && $target =~ / \A [#] /x;
+    my $fragment;
+    ($fragment) = $target =~ / [#] (.*) \z /x unless $is_image;
+    $target =~ s/ [?#].*\z //x;
+    return if $is_image && $target eq '';
+
+    my $component_error;
+    ( $target, $component_error ) = local_component($target);
+    return ( $component_error, undef ) if $component_error;
+    if ( defined $fragment ) {
+        ( $fragment, $component_error ) = local_component($fragment);
+        return ( $component_error, undef ) if $component_error;
+    }
+
+    my $path     = target_path( $file, $target );
+    my $resolved = resolved_target($path);
+    return ( "$target (unresolvable path)",  undef ) unless defined $resolved;
+    return ( "$target (escapes repository)", undef )
+      unless is_inside_repository($resolved);
+
+    # Resolution classifies containment, but a missing directory
+    # before '..' must not become a valid existing link target.
+    return ( $target, undef ) unless -e $path;
+    if ( defined $fragment && $fragment ne '' && $path =~ / \.md\z /x ) {
+        my $anchors = anchors_for($path);
+        return ( undef, "$target#$fragment" ) unless $anchors->{$fragment};
+    }
+    return;
+}
+
+sub target_path {
+    my ( $file, $target ) = @_;
+    return File::Spec->rel2abs($file) if $target eq '';
+    my $filesystem_target = path_octets($target);
+    if ( $target =~ m{ \A/ }x ) {
+        return File::Spec->catfile(
+            $root,
+            split m{ / }x,
+            substr( $filesystem_target, 1 )
+        );
+    }
+    my ( undef, $dir ) = File::Spec->splitpath( File::Spec->rel2abs($file) );
+    return File::Spec->catfile( $dir, split m{ / }x, $filesystem_target );
+}
+
+sub check_markdown_file {
+    my ( $file, $missing, $missing_anchors ) = @_;
     my $shown_file  = display_path($file);
     my $in_fence    = 0;
     my $line_number = 0;
     for my $line ( @{ markdown_lines($file) } ) {
         ++$line_number;
-        $in_fence = !$in_fence if $line =~ /^\s*(?:```|~~~)/;
+        $in_fence = !$in_fence if $line =~ / ^\s*(?:```|~~~) /x;
         next                   if $in_fence;
-        while ( $line =~ /!?\[[^\]]*\]\(\s*([^)\s]+)(?:\s+"[^"]*")?\s*\)/g ) {
-            my $target = $1;
-            next if $target =~ m{\A(?:[a-z][a-z0-9+.-]*:|//)}i;
-
-            my ($fragment) = $target =~ / [#] (.*) \z /x;
-            $target =~ s/[?#].*\z//;
-            my $component_error;
-            ( $target, $component_error ) = local_component($target);
-            if ( !$component_error && defined $fragment ) {
-                ( $fragment, $component_error ) = local_component($fragment);
-            }
-            if ($component_error) {
-                push @missing, "$shown_file:$line_number: $component_error";
-                next;
-            }
-
-            my $filesystem_target = path_octets($target);
-            my $path;
-            if ( $target eq '' ) {
-                $path = File::Spec->rel2abs($file);
-            }
-            elsif ( $target =~ m{\A/} ) {
-                $path = File::Spec->catfile( $root, split m{/},
-                    substr( $filesystem_target, 1 ) );
-            }
-            else {
-                my ( undef, $dir ) =
-                  File::Spec->splitpath( File::Spec->rel2abs($file) );
-                $path =
-                  File::Spec->catfile( $dir, split m{/}, $filesystem_target );
-            }
-            my $resolved = resolved_target($path);
-            if ( !defined $resolved ) {
-                push @missing,
-                  "$shown_file:$line_number: $target (unresolvable path)";
-                next;
-            }
-            if ( !is_inside_repository($resolved) ) {
-                push @missing,
-                  "$shown_file:$line_number: $target (escapes repository)";
-                next;
-            }
-
-            # Resolution classifies containment, but a missing directory
-            # before '..' must not become a valid existing link target.
-            unless ( -e $path ) {
-                push @missing, "$shown_file:$line_number: $target";
-                next;
-            }
-            if ( defined $fragment && $fragment ne '' && $path =~ /\.md\z/ ) {
-                my $anchors = anchors_for($path);
-                push @missing_anchors,
-                  "$shown_file:$line_number: $target#$fragment"
-                  unless $anchors->{$fragment};
-            }
+        my $location = "$shown_file:$line_number";
+        while ( $line =~ / !?\[[^\]]*\]\(\s*([^)\s]+)(?:\s+"[^"]*")?\s*\) /gx )
+        {
+            my ( $missing_file, $missing_anchor ) =
+              check_local_target( $file, $1, 0 );
+            push @{$missing}, "$location: $missing_file"
+              if defined $missing_file;
+            push @{$missing_anchors}, "$location: $missing_anchor"
+              if defined $missing_anchor;
         }
-        while ( $line =~ /<img\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/gi ) {
-            my $target = $1;
-            next if $target =~ m{\A(?:[a-z][a-z0-9+.-]*:|//|\#)}i;
-            $target =~ s/[?#].*\z//;
-            next if $target eq '';
-            my $component_error;
-            ( $target, $component_error ) = local_component($target);
-            if ($component_error) {
-                push @missing, "$shown_file:$line_number: $component_error";
-                next;
-            }
-            my $filesystem_target = path_octets($target);
-            my ( undef, $dir ) =
-              File::Spec->splitpath( File::Spec->rel2abs($file) );
-            my $path =
-              $target =~ m{\A/}
-              ? File::Spec->catfile( $root, split m{/},
-                substr( $filesystem_target, 1 ) )
-              : File::Spec->catfile( $dir, split m{/}, $filesystem_target );
-            my $resolved = resolved_target($path);
-
-            if ( !defined $resolved ) {
-                push @missing,
-                  "$shown_file:$line_number: $target (unresolvable path)";
-                next;
-            }
-            push @missing,
-              "$shown_file:$line_number: $target (escapes repository)"
-              unless is_inside_repository($resolved);
-            push @missing, "$shown_file:$line_number: $target"
-              if is_inside_repository($resolved) && !-e $path;
+        while ( $line =~ / <img\b[^>]*\bsrc=["']([^"']+)["'][^>]*> /gix ) {
+            my ($missing_file) = check_local_target( $file, $1, 1 );
+            push @{$missing}, "$location: $missing_file"
+              if defined $missing_file;
         }
     }
+    return;
 }
+
+my ( @missing, @missing_anchors );
+check_markdown_file( $_, \@missing, \@missing_anchors ) for sort @files;
 
 if (@missing) {
     print STDERR "Missing relative documentation links:\n";

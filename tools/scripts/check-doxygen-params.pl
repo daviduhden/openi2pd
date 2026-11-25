@@ -77,26 +77,32 @@ if ( !-d $root ) {
 }
 
 my @files;
-for my $subdir (@roots) {
-    my $start = File::Spec->catdir( $root, split m{/}, $subdir );
-    next unless -d $start;
-    File::Find::find(
-        {
-            no_chdir => 1,
-            wanted   => sub {
-                return unless -f $_;
-                return if $_ =~ m{[\\/]tools[\\/]tests[\\/]};
-                my $file = $_;
-                return unless grep { $file =~ /\Q$_\E$/ } @extensions;
-                push @files, $file;
-            },
-        },
-        $start
-    );
-}
-@files = sort @files;
 
-my $param_re = qr/\@param\s*(?:\[[^\]]*\])?\s*([A-Za-z_]\w*)/;
+sub collect_files {
+    for my $subdir (@roots) {
+        my $start = File::Spec->catdir( $root, split m{ / }x, $subdir );
+        next unless -d $start;
+        File::Find::find(
+            {
+                no_chdir => 1,
+                wanted   => sub {
+                    return unless -f $_;
+                    return if $_ =~ m{ [\\/]tools[\\/]tests[\\/] }x;
+                    my $file = $_;
+                    return unless grep { $file =~ /\Q$_\E$/x } @extensions;
+                    push @files, $file;
+                },
+            },
+            $start
+        );
+    }
+    @files = sort @files;
+    return;
+}
+
+collect_files();
+
+my $param_re = qr/ \@param\s*(?:\[[^\]]*\])?\s*([A-Za-z_]\w*) /x;
 my $failures = 0;
 
 sub mask_literals {
@@ -143,8 +149,8 @@ sub split_params {
     my $depth   = 0;
     my $current = '';
     for my $ch ( split //, $text ) {
-        $depth++ if $ch =~ /[\(\[\{<]/;
-        $depth-- if $ch =~ /[\)\]\}>]/;
+        $depth++ if $ch =~ / [\(\[\{<] /x;
+        $depth-- if $ch =~ / [\)\]\}>] /x;
         if ( $ch eq ',' && $depth == 0 ) {
             push @parts, $current;
             $current = '';
@@ -152,50 +158,52 @@ sub split_params {
         }
         $current .= $ch;
     }
-    push @parts, $current if $current =~ /\S/;
+    push @parts, $current if $current =~ / \S /x;
     return @parts;
 }
 
 sub param_name {
     my ($param) = @_;
-    $param =~ s/^\s+|\s+$//g;
+    $param =~ s/ ^\s+|\s+$ //gx;
     return if $param eq '' || $param eq 'void' || $param eq '...';
 
     my $depth = 0;
     my $cut   = -1;
     for my $i ( 0 .. length($param) - 1 ) {
         my $ch = substr( $param, $i, 1 );
-        $depth++ if $ch =~ /[\(\[\{<]/;
-        $depth-- if $ch =~ /[\)\]\}>]/;
+        $depth++ if $ch =~ / [\(\[\{<] /x;
+        $depth-- if $ch =~ / [\)\]\}>] /x;
         if ( $ch eq '=' && $depth == 0 ) { $cut = $i; last; }
     }
     $param = substr( $param, 0, $cut ) if $cut >= 0;
-    $param =~ s/^\s+|\s+$//g;
+    $param =~ s/ ^\s+|\s+$ //gx;
 
     # Array parameters are declared as `char * argv[]`; the brackets are
     # part of the type, not part of the name.
-    $param =~ s/\[\s*\]\s*$//;
+    $param =~ s/ \[\s*\]\s*$ //x;
 
-    if ( $param =~ /\(\s*\*\s*([A-Za-z_]\w*)\s*\)/ ) { return $1; }
+    if ( $param =~ / \(\s*\*\s*([A-Za-z_]\w*)\s*\) /x ) { return $1; }
 
     # Abstract declarators have no documentation name. A lone typedef or
     # qualified type is not an identifier declaration, even when cv or
     # elaborated-type specifiers precede it. Keep this lexical: resolving
     # arbitrary C++ types would require the compiler's symbol table.
     my $type_only = $param;
-    $type_only =~ s/\b(?:const|volatile|typename)\b/ /g;
-    $type_only =~ s/^\s*(?:struct|class|union|enum(?:\s+class)?)\s+//;
-    $type_only =~ s/^\s+|\s+$//g;
+    $type_only =~ s/ \b(?:const|volatile|typename)\b / /gx;
+    $type_only =~ s/ ^\s*(?:struct|class|union|enum(?:\s+class)?)\s+ //x;
+    $type_only =~ s/ ^\s+|\s+$ //gx;
     return
-      if $type_only =~ /\A(?:::)?[A-Za-z_]\w*(?:\s*::\s*[A-Za-z_]\w*)*\z/;
-    return
-      if $type_only =~
-/\A(?:signed|unsigned|short|long|int|char|double|float|bool|wchar_t|char8_t|char16_t|char32_t|void)(?:\s+(?:signed|unsigned|short|long|int|char|double|float|bool|wchar_t|char8_t|char16_t|char32_t|void))*\z/;
-    return unless $param =~ /([A-Za-z_]\w*)\s*$/;
-    my $name = $1;
-    return
-      if $name =~
-      /^(?:const|volatile|unsigned|signed|struct|class|enum|typename)$/;
+      if $type_only =~ / \A(?:::)?[A-Za-z_]\w*(?:\s*::\s*[A-Za-z_]\w*)*\z /x;
+    my $primitive_types = join '|',
+      qw(signed unsigned short long int char double float bool wchar_t char8_t
+      char16_t char32_t void);
+    my $primitive = qr{ (?: $primitive_types ) }x;
+    return if $type_only =~ / \A $primitive (?:\s+$primitive)* \z /x;
+    return unless $param =~ / ([A-Za-z_]\w*)\s*$ /x;
+    my $name           = $1;
+    my $type_specifier = qr{ const | volatile | unsigned | signed
+        | struct | class | enum | typename }x;
+    return if $name =~ / ^ $type_specifier $ /x;
     return $name;
 }
 
@@ -206,46 +214,49 @@ sub param_name {
 sub declaration_info {
     my ( $masked, $position ) = @_;
     my $tail = substr( $masked, $position, 800 );
-    $tail =~ s/^\s+//;
+    $tail =~ s/ ^\s+ //x;
     my $open = index( $tail, '(' );
     return if $open < 0;
     my $prefix = substr( $tail, 0, $open );
-    return if $prefix =~ /[#;\{\}]/;
+    return if $prefix =~ / [#;\{\}] /x;
     return if ( $prefix =~ tr/\n// ) > 8;
 
-    my $depth = 0;
-    my $close = -1;
+    my $depth         = 0;
+    my $closing_paren = -1;
     for my $i ( $open .. length($tail) - 1 ) {
         my $ch = substr( $tail, $i, 1 );
         $depth++ if $ch eq '(';
         if ( $ch eq ')' ) {
             $depth--;
-            if ( $depth == 0 ) { $close = $i; last; }
+            if ( $depth == 0 ) { $closing_paren = $i; last; }
         }
     }
-    return if $close < 0;
+    return if $closing_paren < 0;
 
-    my $name_part = $prefix;
-    $name_part =~
-s/\b(?:template\s*<[^;{}]*?>|inline|static|constexpr|consteval|virtual|explicit|friend|extern|JNIEXPORT|JNICALL|__cdecl|CALLBACK|noexcept|const|override|final)\b/ /g;
-    $name_part =~ s/^\s+|\s+$//g;
+    my $name_part  = $prefix;
+    my $specifiers = join '|',
+      qw(inline static constexpr consteval virtual explicit friend extern
+      JNIEXPORT JNICALL __cdecl CALLBACK noexcept const override final);
+    $name_part =~ s/ \b(?: template\s*<[^;{}]*?> | $specifiers )\b / /gx;
+    $name_part =~ s/ ^\s+|\s+$ //gx;
     return if $name_part eq '';
+    my $qualified_name = qr{ [A-Za-z_]\w*(?:::[A-Za-z_]\w*)* }x;
     return
       unless $name_part =~
-/((?:[A-Za-z_]\w*(?:::[A-Za-z_]\w*)*)|operator\s*[^\s(]+|~[A-Za-z_]\w*)\s*$/;
-    my $full  = $1;
-    my @words = split /\s+/, $name_part;
-    my $last  = $words[-1] // '';
-    return
-      if $last =~
-/^(?:if|for|while|switch|catch|return|sizeof|decltype|static_assert|alignof)$/;
+      / ( $qualified_name | operator\s*[^\s(]+ | ~[A-Za-z_]\w* )\s*$ /x;
+    my $full       = $1;
+    my @words      = split / \s+ /x, $name_part;
+    my $last_word  = $words[-1] // '';
+    my $statement  = qr{ if | for | while | switch | catch | return }x;
+    my $type_query = qr{ sizeof | decltype | static_assert | alignof }x;
+    return if $last_word =~ / ^(?: $statement | $type_query )$ /x;
 
     my @names;
     my $arity = 0;
     for my $part (
-        split_params( substr( $tail, $open + 1, $close - $open - 1 ) ) )
+        split_params( substr( $tail, $open + 1, $closing_paren - $open - 1 ) ) )
     {
-        ( my $plain = $part ) =~ s/^\s+|\s+$//g;
+        ( my $plain = $part ) =~ s/ ^\s+|\s+$ //gx;
         next if $plain eq '' || $plain eq 'void' || $plain eq '...';
         $arity++;
         my $name = param_name($part);
@@ -253,7 +264,10 @@ s/\b(?:template\s*<[^;{}]*?>|inline|static|constexpr|consteval|virtual|explicit|
     }
 
     my ( $qualifier, $simple ) = ( '', $full );
-    if ( $full =~ /^(.*)::([A-Za-z_]\w*)$/ ) { $qualifier = $1; $simple = $2; }
+    if ( $full =~ / ^(.*)::([A-Za-z_]\w*)$ /x ) {
+        $qualifier = $1;
+        $simple    = $2;
+    }
     return {
         names     => \@names,
         arity     => $arity,
@@ -268,19 +282,19 @@ s/\b(?:template\s*<[^;{}]*?>|inline|static|constexpr|consteval|virtual|explicit|
 # function body cannot be mistaken for a namespace-level declaration.
 sub scope_marker {
     my ($tail) = @_;
-    $tail                    =~ s/^\s+|\s+$//g;
-    $tail                    =~ s/^template\s*<[^;{}]*?>\s*//;
-    return '{}' unless $tail =~ /^(namespace|class|struct|union)\b(.*)$/s;
+    $tail                    =~ s/ ^\s+|\s+$ //gx;
+    $tail                    =~ s/ ^template\s*<[^;{}]*?>\s* //x;
+    return '{}' unless $tail =~ / ^(namespace|class|struct|union)\b(.*)$ /sx;
     my $kind = $1;
     my $rest = $2;
     if ( $kind eq 'namespace' ) {
-        return $1 if $rest =~ /^\s*([A-Za-z_]\w*)/;
+        return $1 if $rest =~ / ^\s*([A-Za-z_]\w*) /x;
         return '{}';
     }
-    $rest =~ s/:.*$//s;    # drop the base clause before the opening brace
-    my @words = grep { /^[A-Za-z_]\w*$/ } split /\s+/, $rest;
-    @words = grep { !/^(?:final|alignas)$/ } @words;
-    @words = grep { !/^[A-Z][A-Z0-9_]*$/ } @words;     # export macro
+    $rest =~ s/ :.*$ //sx;    # drop the base clause before the opening brace
+    my @words = grep { / ^[A-Za-z_]\w*$ /x } split / \s+ /x, $rest;
+    @words = grep { !/ ^(?:final|alignas)$ /x } @words;
+    @words = grep { !/ ^[A-Z][A-Z0-9_]*$ /x } @words;     # export macro
     return $words[-1] if @words;
     return '{}';
 }
@@ -336,17 +350,17 @@ sub entity_key {
 sub display_path {
     my ($path) = @_;
     my $display = File::Spec->abs2rel( $path, $root );
-    $display =~ s{\\}{/}g;
+    $display =~ s{ \\ }{/}gx;
     return $display;
 }
 
 sub doc_blocks {
     my ($source) = @_;
     my @blocks;
-    while ( $source =~ m{/\*\*(.*?)\*/}gs ) {
+    while ( $source =~ m{ /\*\*(.*?)\*/ }gsx ) {
         push @blocks, { start => $-[0], end => $+[0], text => $1 };
     }
-    while ( $source =~ m{((?:^[ \t]*///[^\n]*\n)+)}gm ) {
+    while ( $source =~ m{ ((?:^[ \t]*///[^\n]*\n)+) }gmx ) {
         push @blocks, { start => $-[0], end => $+[0], text => $1 };
     }
     return @blocks;
@@ -374,14 +388,14 @@ my @documents;
 for my $path (@files) {
     my $source = read_source($path);
     my $masked = $source;
-    $masked =~ s{/\*.*?\*/}{ ' ' x length ($&) }gse;
+    $masked =~ s{ /\*.*?\*/ }{ ' ' x length ($&) }gsex;
     $masked = mask_literals($masked);
     push @documents,
       {
         path      => $path,
         source    => $source,
         masked    => $masked,
-        is_header => ( $path =~ /\.(?:h|hpp)$/ ? 1 : 0 )
+        is_header => ( $path =~ / \.(?:h|hpp)$ /x ? 1 : 0 )
       };
 }
 
@@ -391,18 +405,18 @@ for my $path (@files) {
 my %referenced_symbols;
 for my $document (@documents) {
     my $masked = $document->{masked};
-    while ( $masked =~
-        /\b(?:class|struct|union|namespace|typedef|using)\s+([A-Za-z_]\w*)/g )
-    {
+    my $declarator =
+      qr{ class | struct | union | namespace | typedef | using }x;
+    while ( $masked =~ / \b$declarator\s+([A-Za-z_]\w*) /gx ) {
         $referenced_symbols{$1} = 1;
     }
-    while ( $masked =~ /\benum(?:\s+class)?\s+([A-Za-z_]\w*)/g ) {
+    while ( $masked =~ / \benum(?:\s+class)?\s+([A-Za-z_]\w*) /gx ) {
         $referenced_symbols{$1} = 1;
     }
-    while ( $masked =~ /\b([A-Za-z_]\w*)\s*\(/g ) {
+    while ( $masked =~ / \b([A-Za-z_]\w*)\s*\( /gx ) {
         $referenced_symbols{$1} = 1;
     }
-    while ( $masked =~ /^\s*#\s*define\s+([A-Za-z_]\w*)/mg ) {
+    while ( $masked =~ / ^\s*\#\s*define\s+([A-Za-z_]\w*) /mgx ) {
         $referenced_symbols{$1} = 1;
     }
 }
@@ -411,97 +425,114 @@ for my $document (@documents) {
 # keeps a definition from repeating that contract; the first declaration
 # owns it.
 my %header_contract;
-for my $document ( grep { $_->{is_header} } @documents ) {
-    for my $block ( doc_blocks( $document->{source} ) ) {
-        my %documented;
-        while ( $block->{text} =~ /$param_re/g ) { $documented{$1} = 1; }
-        next unless %documented;
-        my $info = declaration_info( $document->{masked}, $block->{end} );
-        next unless $info;
-        my $key = entity_key( $document->{masked}, $block->{start}, $info );
-        next if exists $header_contract{$key};
-        $header_contract{$key} = {
-            path => display_path( $document->{path} ),
-            line => block_line( $document->{source}, $block->{start} )
-        };
+
+sub collect_header_contracts {
+    for my $document ( grep { $_->{is_header} } @documents ) {
+        for my $block ( doc_blocks( $document->{source} ) ) {
+            my %documented;
+            while ( $block->{text} =~ /$param_re/gx ) { $documented{$1} = 1; }
+            next unless %documented;
+            my $info = declaration_info( $document->{masked}, $block->{end} );
+            next unless $info;
+            my $key = entity_key( $document->{masked}, $block->{start}, $info );
+            next if exists $header_contract{$key};
+            $header_contract{$key} = {
+                path => display_path( $document->{path} ),
+                line => block_line( $document->{source}, $block->{start} )
+            };
+        }
     }
+    return;
 }
+
+collect_header_contracts();
 
 # Pass 2: the per-block rules and the declaration/definition duplicate.
-for my $document (@documents) {
-    my $source = $document->{source};
-    my $masked = $document->{masked};
-    for my $block ( doc_blocks($source) ) {
-        my %documented;
-        while ( $block->{text} =~ /$param_re/g ) { $documented{$1} = 1; }
-        next unless %documented;    # WARN_NO_PARAMDOC is disabled.
+sub check_parameter_documentation {
+    for my $document (@documents) {
+        my $source = $document->{source};
+        my $masked = $document->{masked};
+        for my $block ( doc_blocks($source) ) {
+            my %documented;
+            while ( $block->{text} =~ /$param_re/gx ) { $documented{$1} = 1; }
+            next unless %documented;    # WARN_NO_PARAMDOC is disabled.
 
-        my $line    = block_line( $source, $block->{start} );
-        my $display = display_path( $document->{path} );
+            my $line    = block_line( $source, $block->{start} );
+            my $display = display_path( $document->{path} );
 
-        my %seen;
-        my @repeated;
-        while ( $block->{text} =~ /$param_re/g ) {
-            push @repeated, $1 if $seen{$1}++;
-        }
-        if (@repeated) {
-            print STDERR "$display:$line: duplicate \@param '$_' in one "
-              . "documentation block\n"
-              for @repeated;
+            my %seen;
+            my @repeated;
+            while ( $block->{text} =~ /$param_re/gx ) {
+                push @repeated, $1 if $seen{$1}++;
+            }
+            if (@repeated) {
+                print STDERR "$display:$line: duplicate \@param '$_' in one "
+                  . "documentation block\n"
+                  for @repeated;
+                $failures++;
+            }
+
+            my $info = declaration_info( $masked, $block->{end} );
+            next unless $info;
+
+            my %declared   = map  { $_ => 1 } @{ $info->{names} };
+            my @undeclared = grep { !$declared{$_} } sort keys %documented;
+            if (@undeclared) {
+                print STDERR
+                  "$display:$line: documented parameter(s) not in the ",
+                  "declaration: ", join( ', ', @undeclared ), "\n";
+                $failures++;
+            }
+
+            my @missing = grep { !$documented{$_} } @{ $info->{names} };
+            if (@missing) {
+                print STDERR "$display:$line: undocumented parameter(s): ",
+                  join( ', ', @missing ), "\n";
+                $failures++;
+            }
+
+            next if $document->{is_header};
+            my $key         = entity_key( $masked, $block->{start}, $info );
+            my $declaration = $header_contract{$key} or next;
+            print STDERR "$display:$line: duplicate \@param documentation for ",
+              "$info->{name}; the declaration in $declaration->{path}:",
+              "$declaration->{line} already documents it\n";
             $failures++;
         }
-
-        my $info = declaration_info( $masked, $block->{end} );
-        next unless $info;
-
-        my %declared   = map  { $_ => 1 } @{ $info->{names} };
-        my @undeclared = grep { !$declared{$_} } sort keys %documented;
-        if (@undeclared) {
-            print STDERR "$display:$line: documented parameter(s) not in the ",
-              "declaration: ", join( ', ', @undeclared ), "\n";
-            $failures++;
-        }
-
-        my @missing = grep { !$documented{$_} } @{ $info->{names} };
-        if (@missing) {
-            print STDERR "$display:$line: undocumented parameter(s): ",
-              join( ', ', @missing ), "\n";
-            $failures++;
-        }
-
-        next if $document->{is_header};
-        my $key         = entity_key( $masked, $block->{start}, $info );
-        my $declaration = $header_contract{$key} or next;
-        print STDERR "$display:$line: duplicate \@param documentation for ",
-          "$info->{name}; the declaration in $declaration->{path}:",
-          "$declaration->{line} already documents it\n";
-        $failures++;
     }
+    return;
 }
+
+check_parameter_documentation();
 
 # Pass 3: a cross-reference must name an extractable symbol. Doxygen
 # reports an unknown target as a doc error and WARN_AS_ERROR makes it
 # fatal; a generic member name such as `mutex` is exactly the case this
 # rejects, while types, namespaces, macros and callables resolve.
-for my $document (@documents) {
-    my $source = $document->{source};
-    for my $block ( doc_blocks($source) ) {
-        while ( $block->{text} =~
-            /(?:\@ref|\\ref)\s+#?([A-Za-z_]\w*(?:::[A-Za-z_]\w*)*)/g )
-        {
-            my $target = $1;
-            my $simple = $target;
-            $simple = $1 if $target =~ /::([A-Za-z_]\w*)$/;
-            next if $referenced_symbols{$simple};
-            my $line = block_line( $source, $block->{start} );
-            print STDERR display_path( $document->{path} )
-              . ":$line: unresolved "
-              . "\@ref target '$target'; use backticks for a word or a data "
-              . "member\n";
-            $failures++;
+sub check_document_references {
+    for my $document (@documents) {
+        my $source = $document->{source};
+        for my $block ( doc_blocks($source) ) {
+            while ( $block->{text} =~
+                / (?:\@ref|\\ref)\s+\#?([A-Za-z_]\w*(?:::[A-Za-z_]\w*)*) /gx )
+            {
+                my $target = $1;
+                my $simple = $target;
+                $simple = $1 if $target =~ / ::([A-Za-z_]\w*)$ /x;
+                next if $referenced_symbols{$simple};
+                my $line = block_line( $source, $block->{start} );
+                print STDERR display_path( $document->{path} )
+                  . ":$line: unresolved "
+                  . "\@ref target '$target'; use backticks for a word or a data "
+                  . "member\n";
+                $failures++;
+            }
         }
     }
+    return;
 }
+
+check_document_references();
 
 # Pass 4: Doxygen command blocks must balance, and Javadoc-only inline
 # tags are not Doxygen syntax. `{@code x}` in a C/C++ comment looks like
@@ -514,16 +545,16 @@ for my $document (@documents) {
         my $text    = $block->{text};
         my $line    = block_line( $source, $block->{start} );
         my $display = display_path( $document->{path} );
-        if ( $text =~ /\{\@(?:code|link|literal|inheritDoc)\b/ ) {
+        if ( $text =~ / \{\@(?:code|link|literal|inheritDoc)\b /x ) {
             print STDERR "$display:$line: Javadoc inline tag in a C/C++ "
               . "comment; use backticks\n";
             $failures++;
         }
         my $balanced = $text;
-        $balanced =~ s/\{\@(?:code|link|literal|inheritDoc)\b[^}]*\}//g;
+        $balanced =~ s/ \{\@(?:code|link|literal|inheritDoc)\b[^}]*\} //gx;
         for my $kind (qw(code verbatim)) {
-            my $opened = () = $balanced =~ /(?:\@${kind}|\\${kind})\b/g;
-            my $closed = () = $balanced =~ /(?:\@end${kind}|\\end${kind})\b/g;
+            my $opened = () = $balanced =~ /(?:\@${kind}|\\${kind})\b/gx;
+            my $closed = () = $balanced =~ /(?:\@end${kind}|\\end${kind})\b/gx;
             next if $opened == $closed;
             print STDERR "$display:$line: unbalanced \@$kind/\@end$kind\n";
             $failures++;

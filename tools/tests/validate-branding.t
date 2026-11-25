@@ -40,8 +40,11 @@ else {
     # A signal can leave the shifted exit value at zero. Require the
     # successful pipe close and the complete wait word, not just >> 8.
     ok( $closed && $status == 0, 'validator exits successfully' );
-    like( $output, qr/branding validation passed/,
-        'validator reports success' );
+    like(
+        $output,
+        qr/ branding\ validation\ passed /x,
+        'validator reports success'
+    );
 }
 
 done_testing();

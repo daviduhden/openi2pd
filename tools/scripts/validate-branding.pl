@@ -15,7 +15,8 @@ use warnings;
 use 5.016;
 use File::Spec;
 use Cwd         qw(abs_path);
-use Digest::SHA qw(sha256_hex);
+use Carp        qw(croak);
+use Digest::SHA ();
 use FindBin     qw($Bin);
 
 my $default_root =
@@ -60,87 +61,112 @@ my @required = qw(
 );
 
 my $failed = 0;
-for my $rel (@required) {
-    my $path = File::Spec->catfile( $root, split m{/}, $rel );
-    if ( !-f $path ) {
-        print STDERR "missing: $rel\n";
-        $failed++;
-    }
-}
 
-my %svg = map { $_ => 1 } qw(
-  logo.svg symbol.svg logo-horizontal.svg logo-monochrome.svg
-  logo-light.svg logo-dark.svg
-);
-my @svgs = (
-    ( map { "assets/branding/$_" } sort keys %svg ),
-    'contrib/artwork/open-i2pd-icon.svg'
-);
-for my $rel (@svgs) {
-    my $path = File::Spec->catfile( $root, split m{/}, $rel );
-    next unless -f $path;
-    my $name = $rel;
-    open my $fh, '<', $path
-      or do { print STDERR "open $name: $!\n"; $failed++; next };
-    local $/ = undef;
-    my $text = <$fh>;
-    close $fh;
-    for my $bad (
-        '<image',      'data:image', '@font-face', '<text',
-        'font-family', '<script',    'xlink:href="http'
-      )
-    {
-        if ( index( $text, $bad ) >= 0 ) {
-            print STDERR "$name contains forbidden $bad\n";
+sub check_inventory {
+    for my $rel (@required) {
+        my $path = File::Spec->catfile( $root, split m{ / }x, $rel );
+        if ( !-f $path ) {
+            print STDERR "missing: $rel\n";
             $failed++;
         }
     }
-    if ( $text !~ /<svg\b/ || $text !~ /<path\b/ || $text !~ /viewBox=/ ) {
-        print STDERR "$name is not an SVG path document with a viewBox\n";
-        $failed++;
-    }
+    return;
 }
+check_inventory();
+
+sub check_svg_shapes {
+    my %svg = map { $_ => 1 } qw(
+      logo.svg symbol.svg logo-horizontal.svg logo-monochrome.svg
+      logo-light.svg logo-dark.svg
+    );
+    my @svgs = (
+        ( map { "assets/branding/$_" } sort keys %svg ),
+        'contrib/artwork/open-i2pd-icon.svg'
+    );
+    for my $rel (@svgs) {
+        my $path = File::Spec->catfile( $root, split m{ / }x, $rel );
+        next unless -f $path;
+        my $name = $rel;
+        open my $fh, '<', $path
+          or do { print STDERR "open $name: $!\n"; $failed++; next };
+        local $/ = undef;
+        my $text = <$fh>;
+        close $fh;
+        for my $bad (
+            '<image',      'data:image',
+            '@font-face',  '<text',
+            'font-family', '<script',
+            'xlink:href="http'
+          )
+        {
+            if ( index( $text, $bad ) >= 0 ) {
+                print STDERR "$name contains forbidden $bad\n";
+                $failed++;
+            }
+        }
+        if (   $text !~ / <svg\b /x
+            || $text !~ / <path\b /x
+            || $text !~ / viewBox= /x )
+        {
+            print STDERR "$name is not an SVG path document with a viewBox\n";
+            $failed++;
+        }
+    }
+    return;
+}
+check_svg_shapes();
 
 sub png_size {
     my ($path) = @_;
-    open my $fh, '<:raw', $path or return;
 
     # Read only the signature and the first chunk header: IHDR must be
     # the first chunk, and its payload starts with two big-endian 32-bit
     # sizes. Parsing the header instead of trusting a tool keeps the
     # check offline.
-    read( $fh, my $sig, 8 );
-    return unless defined $sig && $sig eq "\x89PNG\r\n\x1a\n";
-    read( $fh, my $ihdr, 8 );
-    return unless length($ihdr) == 8 && substr( $ihdr, 4, 4 ) eq 'IHDR';
-    read( $fh, my $data, 8 );
+    open my $fh, '<:raw', $path or return;
+    my $count = read( $fh, my $header, 24 );
     close $fh;
-    return unless length($data) == 8;
-    my ( $w, $h ) = unpack( 'NN', $data );
+    return
+         unless defined $count
+      && $count == 24
+      && substr( $header, 0,  8 ) eq "\x89PNG\r\n\x1a\n"
+      && substr( $header, 12, 4 ) eq 'IHDR';
+    my ( $w, $h ) = unpack( 'NN', substr( $header, 16, 8 ) );
     return ( $w, $h );
 }
 
-for my $pair (
-    [ 'assets/branding/logo.png',          1254, 1254 ],
-    [ 'assets/branding/symbol.png',        1024, 1024 ],
-    [ 'assets/branding/logo-original.png', 1254, 1254 ],
-    [ 'contrib/artwork/openi2pd-256.png',  256,  256 ],
-    [ 'docs/img/logo.png',                 512,  512 ],
-  )
-{
-    my ( $rel, $w, $h ) = @$pair;
-    my $path = File::Spec->catfile( $root, split m{/}, $rel );
-    next unless -f $path;
-    my ( $pw, $ph ) = png_size($path);
-    if ( !defined $pw || $pw != $w || $ph != $h ) {
-        print STDERR "$rel has unexpected dimensions\n";
-        $failed++;
+sub check_png_dimensions {
+    for my $pair (
+        [ 'assets/branding/logo.png',          1254, 1254 ],
+        [ 'assets/branding/symbol.png',        1024, 1024 ],
+        [ 'assets/branding/logo-original.png', 1254, 1254 ],
+        [ 'contrib/artwork/openi2pd-256.png',  256,  256 ],
+        [ 'docs/img/logo.png',                 512,  512 ],
+      )
+    {
+        my ( $rel, $w, $h ) = @$pair;
+        my $path = File::Spec->catfile( $root, split m{ / }x, $rel );
+        next unless -f $path;
+        my ( $pw, $ph ) = png_size($path);
+        if ( !defined $pw || $pw != $w || $ph != $h ) {
+            print STDERR "$rel has unexpected dimensions\n";
+            $failed++;
+        }
     }
+    return;
 }
+check_png_dimensions();
 
 sub ico_sizes {
     my ($path) = @_;
     open my $fh, '<:raw', $path or return;
+    my @sizes = read_ico_sizes($fh);
+    close $fh;
+    return @sizes;
+}
+
+sub read_ico_sizes {
+    my ($fh) = @_;
 
     # ICONDIR: reserved(0), type(1 = icon), image count. Each 16-byte
     # ICONDIRENTRY starts with width and height as single bytes, where 0
@@ -160,80 +186,77 @@ sub ico_sizes {
         $height = 256 if $height == 0;
         push @sizes, $width if $width == $height;
     }
-    close $fh;
     return @sizes;
 }
 
-for my $pair (
-    [ 'docs/img/favicon.ico', [ 16, 32, 48, 64 ] ],
-    [ 'Win32/openi2pd.ico',   [ 16, 24, 32, 48, 64, 128, 256 ] ],
-  )
-{
-    my ( $rel, $expected ) = @$pair;
-    my $path = File::Spec->catfile( $root, split m{/}, $rel );
-    next unless -f $path;
-    my @actual = sort { $a <=> $b } ico_sizes($path);
-    my @wanted = sort { $a <=> $b } @$expected;
-    if ( join( ',', @actual ) ne join( ',', @wanted ) ) {
-        print STDERR "$rel has unexpected ICO sizes ("
-          . join( ',', @actual ) . ")\n";
-        $failed++;
+sub check_ico_dimensions {
+    for my $pair (
+        [ 'docs/img/favicon.ico', [ 16, 32, 48, 64 ] ],
+        [ 'Win32/openi2pd.ico',   [ 16, 24, 32, 48, 64, 128, 256 ] ],
+      )
+    {
+        my ( $rel, $expected ) = @$pair;
+        my $path = File::Spec->catfile( $root, split m{ / }x, $rel );
+        next unless -f $path;
+        my @actual = sort { $a <=> $b } ico_sizes($path);
+        my @wanted = sort { $a <=> $b } @$expected;
+        if ( join( ',', @actual ) ne join( ',', @wanted ) ) {
+            print STDERR "$rel has unexpected ICO sizes ("
+              . join( ',', @actual ) . ")\n";
+            $failed++;
+        }
     }
+    return;
+}
+check_ico_dimensions();
+
+sub file_hash {
+    my ($path) = @_;
+    open my $fh, '<:raw', $path or croak "open $path: $!";
+    my $digest = Digest::SHA->new(256)->addfile($fh)->hexdigest;
+    close $fh or croak "close $path: $!";
+    return $digest;
 }
 
-my $symbol_path =
-  File::Spec->catfile( $root, 'assets', 'branding', 'symbol.svg' );
-my $artwork_path =
-  File::Spec->catfile( $root, 'contrib', 'artwork', 'open-i2pd-icon.svg' );
-if ( -f $symbol_path && -f $artwork_path ) {
-    my $symbol_hash = sha256_hex(
-        do {
-            open my $fh, '<:raw', $symbol_path or die $!;
-            local $/ = undef;
-            <$fh>;
-        }
-    );
-    my $artwork_hash = sha256_hex(
-        do {
-            open my $fh, '<:raw', $artwork_path or die $!;
-            local $/ = undef;
-            <$fh>;
-        }
-    );
-    if ( $symbol_hash ne $artwork_hash ) {
-        print STDERR
+sub check_originals {
+    my $symbol_path =
+      File::Spec->catfile( $root, 'assets', 'branding', 'symbol.svg' );
+    my $artwork_path =
+      File::Spec->catfile( $root, 'contrib', 'artwork', 'open-i2pd-icon.svg' );
+    if ( -f $symbol_path && -f $artwork_path ) {
+        my $symbol_hash  = file_hash($symbol_path);
+        my $artwork_hash = file_hash($artwork_path);
+        if ( $symbol_hash ne $artwork_hash ) {
+            print STDERR
 "contrib/artwork/open-i2pd-icon.svg differs from assets/branding/symbol.svg\n";
-        $failed++;
-    }
-}
-
-my $original =
-  File::Spec->catfile( $root, 'assets', 'branding', 'logo-original.png' );
-if ( -f $original ) {
-    my $expected =
-      '9e8dc2d7a8e330112f28011ebfe993871a01e9cd8be70c8cb85cb29c0d76112f';
-    my $actual = sha256_hex(
-        do {
-            open my $fh, '<:raw', $original or die $!;
-            local $/ = undef;
-            <$fh>;
+            $failed++;
         }
-    );
-    if ( $actual ne $expected ) {
-        print STDERR "logo-original.png SHA-256 changed\n";
-        $failed++;
     }
+
+    my $original =
+      File::Spec->catfile( $root, 'assets', 'branding', 'logo-original.png' );
+    if ( -f $original ) {
+        my $expected =
+          '9e8dc2d7a8e330112f28011ebfe993871a01e9cd8be70c8cb85cb29c0d76112f';
+        my $actual = file_hash($original);
+        if ( $actual ne $expected ) {
+            print STDERR "logo-original.png SHA-256 changed\n";
+            $failed++;
+        }
+    }
+    return;
 }
+check_originals();
 
 # Palette centralization: every hex value in a platform file must appear
 # in assets/branding/colors.md. This catches an Android/TUI/CSS palette
 # drifting away from the canonical source without requiring a build.
 my %canonical;
 my $colors_rel  = 'assets/branding/colors.md';
-my $colors_path = File::Spec->catfile( $root, split m{/}, $colors_rel );
+my $colors_path = File::Spec->catfile( $root, split m{ / }x, $colors_rel );
 if ( open my $colors_fh, '<', $colors_path ) {
     while ( my $line = <$colors_fh> ) {
-        if ( $line =~ /^\|\s*`[^`]+`\s*\|\s*`(#[0-9A-Fa-f]{6})`\s*\|/ ) {
+        if ( $line =~ / ^\|\s*`[^`]+`\s*\|\s*`(\#[0-9A-Fa-f]{6})`\s*\| /x ) {
             $canonical{ uc $1 } = 1;
         }
     }
@@ -246,7 +269,7 @@ else {
 
 sub check_palette_file {
     my ( $rel, $pattern ) = @_;
-    my $path = File::Spec->catfile( $root, split m{/}, $rel );
+    my $path = File::Spec->catfile( $root, split m{ / }x, $rel );
     if ( !-f $path ) {
         print STDERR "palette file missing: $rel\n";
         $failed++;
@@ -258,9 +281,9 @@ sub check_palette_file {
     my $text = <$fh>;
     close $fh;
     my $count = 0;
-    while ( $text =~ /$pattern/g ) {
+    while ( $text =~ /$pattern/gx ) {
         my $hex = uc $1;
-        $hex = "#$hex" unless $hex =~ /^#/;
+        $hex = "#$hex" unless $hex =~ / ^\# /x;
         $count++;
         if ( !$canonical{$hex} ) {
             print STDERR "$rel contains non-canonical colour $hex\n";
@@ -283,17 +306,18 @@ for my $core ( '#00B2B4', '#078DE4', '#162737' ) {
 
 check_palette_file(
     'android/app/src/main/res/values/colors.xml',
-    qr/\bcolor\b[^>]*>\s*(#[0-9A-Fa-f]{6})\s*</
+    qr/ \bcolor\b[^>]*>\s*(\#[0-9A-Fa-f]{6})\s*< /x
 );
 check_palette_file(
     'android/app/src/main/res/values-night/colors.xml',
-    qr/\bcolor\b[^>]*>\s*(#[0-9A-Fa-f]{6})\s*</
+    qr/ \bcolor\b[^>]*>\s*(\#[0-9A-Fa-f]{6})\s*< /x
 );
 check_palette_file( 'docs/stylesheets/brand.css',
-    qr/--oi-[a-z-]+\s*:\s*(#[0-9A-Fa-f]{6})/ );
-check_palette_file( 'tui/Theme.h', qr/FromHex\s*\(\s*0x([0-9A-Fa-f]{6})\s*\)/ );
+    qr/ --oi-[a-z-]+\s*:\s*(\#[0-9A-Fa-f]{6}) /x );
+check_palette_file( 'tui/Theme.h',
+    qr/ FromHex\s*\(\s*0x([0-9A-Fa-f]{6})\s*\) /x );
 check_palette_file( 'libi2pd_client/HTTPProxy.cpp',
-    qr/(?:color|background)\s*:\s*(#[0-9A-Fa-f]{6})/ );
+    qr/ (?:color|background)\s*:\s*(\#[0-9A-Fa-f]{6}) /x );
 
 sub normalize_hex {
     my ($hex) = @_;
@@ -303,7 +327,7 @@ sub normalize_hex {
     # token that colors.md declares; a non-opaque value stays distinct
     # and fails.
     $hex = uc $hex;
-    $hex =~ s/^#//;
+    $hex =~ s/ ^\# //x;
     if ( length($hex) == 8 && substr( $hex, 0, 2 ) eq 'FF' ) {
         $hex = substr( $hex, 2 );
     }
@@ -315,20 +339,21 @@ sub normalize_hex {
 # #FF000000 plus a theme tint, not a brand colour.
 sub check_svg_palette {
     my ($rel) = @_;
-    my $path = File::Spec->catfile( $root, split m{/}, $rel );
+    my $path = File::Spec->catfile( $root, split m{ / }x, $rel );
     return unless -f $path;
     open my $fh, '<', $path
       or do { print STDERR "open $rel: $!\n"; $failed++; return };
     local $/ = undef;
     my $text = <$fh>;
     close $fh;
-    while ( $text =~ /fill="(#[0-9A-Fa-f]{6})"/g ) {
+    while ( $text =~ / fill="(\#[0-9A-Fa-f]{6})" /gx ) {
         my $hex = normalize_hex($1);
         if ( !$canonical{$hex} ) {
             print STDERR "$rel contains non-canonical SVG fill $hex\n";
             $failed++;
         }
     }
+    return;
 }
 
 for my $rel (
@@ -348,20 +373,21 @@ for my $rel (
 
 sub check_android_vector_palette {
     my ($rel) = @_;
-    my $path = File::Spec->catfile( $root, split m{/}, $rel );
+    my $path = File::Spec->catfile( $root, split m{ / }x, $rel );
     return unless -f $path;
     open my $fh, '<', $path
       or do { print STDERR "open $rel: $!\n"; $failed++; return };
     local $/ = undef;
     my $text = <$fh>;
     close $fh;
-    while ( $text =~ /android:fillColor="(#[0-9A-Fa-f]{6,8})"/g ) {
+    while ( $text =~ / android:fillColor="(\#[0-9A-Fa-f]{6,8})" /gx ) {
         my $hex = normalize_hex($1);
         if ( !$canonical{$hex} ) {
             print STDERR "$rel contains non-canonical vector fill $hex\n";
             $failed++;
         }
     }
+    return;
 }
 
 for my $rel (
@@ -376,61 +402,47 @@ for my $rel (
     check_android_vector_palette($rel);
 }
 
-# The MkDocs mirror must not silently drift from the canonical SVG
-# masters.
-for my $name (
-    qw(logo.svg symbol.svg logo-horizontal.svg logo-monochrome.svg logo-light.svg logo-dark.svg
-    logo.png symbol.png logo-original.png)
-  )
-{
-    my $canonical = File::Spec->catfile( $root, 'assets', 'branding', $name );
-    my $mirror =
-      File::Spec->catfile( $root, 'docs', 'assets', 'branding', $name );
-    if ( !-f $canonical || !-f $mirror ) {
-        print STDERR "docs/assets/branding/$name is missing\n";
-        $failed++;
-        next;
-    }
-    my $canonical_hash = sha256_hex(
-        do {
-            open my $fh, '<:raw', $canonical or die $!;
-            local $/ = undef;
-            <$fh>;
-        }
-    );
-    my $mirror_hash = sha256_hex(
-        do { open my $fh, '<:raw', $mirror or die $!; local $/ = undef; <$fh> }
-    );
-    if ( $canonical_hash ne $mirror_hash ) {
-        print STDERR
-          "docs/assets/branding/$name differs from assets/branding/$name\n";
-        $failed++;
-    }
-}
+sub check_mirrors {
 
-my $docs_colors =
-  File::Spec->catfile( $root, 'docs', 'assets', 'branding', 'colors.md' );
-if ( -f $docs_colors ) {
-    my $canonical_hash = sha256_hex(
-        do {
-            open my $fh, '<:raw', $colors_path or die $!;
-            local $/ = undef;
-            <$fh>;
+    # The MkDocs mirror must not silently drift from the canonical SVG
+    # masters.
+    for my $name (
+        qw(logo.svg symbol.svg logo-horizontal.svg logo-monochrome.svg logo-light.svg logo-dark.svg
+        logo.png symbol.png logo-original.png)
+      )
+    {
+        my $canonical =
+          File::Spec->catfile( $root, 'assets', 'branding', $name );
+        my $mirror =
+          File::Spec->catfile( $root, 'docs', 'assets', 'branding', $name );
+        if ( !-f $canonical || !-f $mirror ) {
+            print STDERR "docs/assets/branding/$name is missing\n";
+            $failed++;
+            next;
         }
-    );
-    my $docs_hash = sha256_hex(
-        do {
-            open my $fh, '<:raw', $docs_colors or die $!;
-            local $/ = undef;
-            <$fh>;
+        my $canonical_hash = file_hash($canonical);
+        my $mirror_hash    = file_hash($mirror);
+        if ( $canonical_hash ne $mirror_hash ) {
+            print STDERR
+              "docs/assets/branding/$name differs from assets/branding/$name\n";
+            $failed++;
         }
-    );
-    if ( $canonical_hash ne $docs_hash ) {
-        print STDERR
-          "docs/assets/branding/colors.md differs from $colors_rel\n";
-        $failed++;
     }
+
+    my $docs_colors =
+      File::Spec->catfile( $root, 'docs', 'assets', 'branding', 'colors.md' );
+    if ( -f $docs_colors ) {
+        my $canonical_hash = file_hash($colors_path);
+        my $docs_hash      = file_hash($docs_colors);
+        if ( $canonical_hash ne $docs_hash ) {
+            print STDERR
+              "docs/assets/branding/colors.md differs from $colors_rel\n";
+            $failed++;
+        }
+    }
+    return;
 }
+check_mirrors();
 
 if ($failed) {
     print STDERR "branding validation failed ($failed issue(s))\n";
