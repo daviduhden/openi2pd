@@ -40,6 +40,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.os.IBinder;
+import android.os.RemoteException;
 import android.os.SystemClock;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
@@ -59,8 +60,7 @@ import org.junit.runner.RunWith;
  * process. It checks the generation and API version, refusal of foreign
  * operation IDs, one-shot retirement for the current generation, and
  * rebind to a fresh generation. Payload IO through a real tree grant,
- * foreign-UID
- * denial and a provider that ignores cancellation stay manual
+ * foreign-UID denial, and a provider that ignores cancellation stay manual
  * scenarios; the provider-boundary cases live in {@link
  * TorrentSafProviderCancellationTest}.</p>
  */
@@ -74,6 +74,8 @@ public final class TorrentSafBrokerContractTest {
     private Context context;
     private ServiceConnection connection;
     private IBinder binder;
+    private CountDownLatch brokerDeath;
+    private IBinder.DeathRecipient deathRecipient;
     private ITorrentSafStorage broker;
     private long operation = 1;
 
@@ -83,28 +85,30 @@ public final class TorrentSafBrokerContractTest {
     }
 
     @After
-    public void tearDown() {
-        IBinder previous = binder;
-        if (connection != null && context != null) {
-            try {
+    public void tearDown() throws InterruptedException {
+        try {
+            if (connection != null && context != null)
                 context.unbindService(connection);
-            } catch (IllegalArgumentException gone) {
-            }
+            // ServiceConnection unregisters its own observer at unbind.
+            // Keep the fixture observer until the exact broker dies.
+            if (deathRecipient != null)
+                assertTrue("Last unbind did not report fixture broker death",
+                        awaitDeath(RETIRE_TIMEOUT_MS));
+        } finally {
+            if (deathRecipient != null)
+                binder.unlinkToDeath(deathRecipient, 0);
             connection = null;
+            binder = null;
+            broker = null;
+            brokerDeath = null;
+            deathRecipient = null;
         }
-        binder = null;
-        broker = null;
-        // The fixture is the only client. Its last unbind must fence the
-        // process before another test can acquire control from a new one.
-        if (previous != null)
-            assertTrue("Fixture broker survived its last unbind",
-                    awaitDeath(previous, RETIRE_TIMEOUT_MS));
     }
 
     /*
      * Binds the real broker or skips when this build cannot host it.
      */
-    private void bind() throws InterruptedException {
+    private void bind() throws InterruptedException, RemoteException {
         final CountDownLatch connected = new CountDownLatch(1);
         final AtomicReference<IBinder> result = new AtomicReference<>();
         ServiceConnection fresh = new ServiceConnection() {
@@ -121,7 +125,6 @@ public final class TorrentSafBrokerContractTest {
                 connected.countDown();
             }
         };
-        connection = fresh;
         boolean requested;
         try {
             requested =
@@ -132,6 +135,7 @@ public final class TorrentSafBrokerContractTest {
             return;
         }
         Assume.assumeTrue("SAF broker service is not declared in this build", requested);
+        connection = fresh;
         assertTrue("Broker did not connect within the budget",
                 connected.await(BIND_TIMEOUT_MS, TimeUnit.MILLISECONDS));
         binder = result.get();
@@ -139,6 +143,11 @@ public final class TorrentSafBrokerContractTest {
         // is unavailable, which is a device capability issue, not a
         // regression.
         Assume.assumeNotNull("Broker refused to start (native restriction unavailable)", binder);
+        CountDownLatch death = new CountDownLatch(1);
+        IBinder.DeathRecipient recipient = death::countDown;
+        binder.linkToDeath(recipient, 0);
+        brokerDeath = death;
+        deathRecipient = recipient;
         broker = ITorrentSafStorage.Stub.asInterface(binder);
         assertNotNull(broker);
     }
@@ -147,20 +156,14 @@ public final class TorrentSafBrokerContractTest {
         return operation++;
     }
 
-    private ITorrentSafControl control(long generation) throws android.os.RemoteException {
+    private ITorrentSafControl control(long generation) throws RemoteException {
         ITorrentSafControl endpoint = broker.openControl(generation);
         assertNotNull("The synchronous acquisition did not issue a control endpoint", endpoint);
         return endpoint;
     }
 
-    private static boolean awaitDeath(IBinder target, long timeoutMs) {
-        long deadline = SystemClock.elapsedRealtime() + timeoutMs;
-        while (SystemClock.elapsedRealtime() < deadline) {
-            if (!target.isBinderAlive())
-                return true;
-            SystemClock.sleep(25);
-        }
-        return !target.isBinderAlive();
+    private boolean awaitDeath(long timeoutMs) throws InterruptedException {
+        return brokerDeath.await(timeoutMs, TimeUnit.MILLISECONDS);
     }
 
     @Test
@@ -186,8 +189,7 @@ public final class TorrentSafBrokerContractTest {
         endpoint.retire(0L);
         endpoint.retire(generation + 1);
         endpoint.retire(-generation);
-        SystemClock.sleep(250);
-        assertTrue("Broker died for a foreign generation", binder.isBinderAlive());
+        assertFalse("Broker died for a foreign generation", awaitDeath(250));
         assertEquals(generation, broker.handshake());
     }
 
@@ -199,11 +201,9 @@ public final class TorrentSafBrokerContractTest {
         ITorrentSafControl active = control(generation);
         assertNotEquals(stale.asBinder(), active.asBinder());
         stale.retire(generation);
-        assertFalse("A revoked endpoint killed the active broker",
-                awaitDeath(binder, RETIRE_TIMEOUT_MS));
+        assertFalse("A revoked endpoint killed the active broker", awaitDeath(RETIRE_TIMEOUT_MS));
         active.retire(generation);
-        assertTrue("The active endpoint did not retire the broker",
-                awaitDeath(binder, RETIRE_TIMEOUT_MS));
+        assertTrue("The active endpoint did not retire the broker", awaitDeath(RETIRE_TIMEOUT_MS));
     }
 
     @Test
@@ -244,7 +244,7 @@ public final class TorrentSafBrokerContractTest {
         bind();
         long generation = broker.handshake();
         control(generation).retire(generation);
-        assertTrue("Broker ignored its own retirement", awaitDeath(binder, RETIRE_TIMEOUT_MS));
+        assertTrue("Broker ignored its own retirement", awaitDeath(RETIRE_TIMEOUT_MS));
         tearDown();
         long start = SystemClock.elapsedRealtime();
         bind();
@@ -265,7 +265,7 @@ public final class TorrentSafBrokerContractTest {
         bind();
         long generation = broker.handshake();
         control(generation).retire(generation);
-        assertTrue("Broker ignored its own retirement", awaitDeath(binder, RETIRE_TIMEOUT_MS));
+        assertTrue("Broker ignored its own retirement", awaitDeath(RETIRE_TIMEOUT_MS));
         tearDown();
         bind();
         long replacement = broker.handshake();

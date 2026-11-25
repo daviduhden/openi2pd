@@ -129,8 +129,10 @@ run Gradle, install an APK or run a device test.
 - Broker retirement instrumentation binds the non-exported debug fixture
   service in its own process. It inherits the production Binder and
   sandbox implementation while avoiding control replacement by the
-  router's reconnecting client. Observe Binder death after the fixture's
-  last unbind before allowing another case to acquire control.
+  router's reconnecting client. Register a fixture-owned death recipient
+  on the exact broker before its last unbind. The service connection
+  removes its observer at unbind, so proxy liveness polling can miss
+  confirmed process death.
 
 - Retain exact resource qualifiers in Gradle and check packaged configurations
   in debug and release APKs. Source parity can pass even when filtering drops
