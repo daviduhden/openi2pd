@@ -1852,6 +1852,22 @@ if(reader_first_cancel EQUAL -1 OR reader_first_cancel GREATER reader_input
   message(FATAL_ERROR "SAF import must check cancellation around reads without clearing interruption")
 endif()
 file(READ "${PROJECT_ROOT}/android/app/src/main/java/org/openi2pd/router/TorrentSafStorage.java" grant_source)
+string(REGEX MATCH
+  "catch [(]android[.]os[.]RemoteException [|] RuntimeException broken[)] [{][^}]*[}]"
+  saf_handshake_failure "${grant_source}")
+if(NOT saf_handshake_failure MATCHES
+    "IBinder binder = session[.]remote[.]asBinder[(][)];[ \t\r\n]+if [(]binder[.]isBinderAlive[(][)][)][ \t\r\n]+retire[(]session[)];[ \t\r\n]+else[ \t\r\n]+brokerDied[(]session[.]generation, binder[)];")
+  message(FATAL_ERROR "A failed SAF handshake must retire a live Binder and release only an observed dead generation")
+endif()
+string(REGEX MATCH
+  "if [(]!ensureBroker[(]session[)][)][^{]*[{][^}]*[}][ \t\r\n]+return Outcome[.]of[(]action[.]run[(]session[)]"
+  saf_payload_admission "${grant_source}")
+if(NOT saf_payload_admission MATCHES "synchronized [(]lock[)]"
+    OR NOT saf_payload_admission MATCHES "generation != session[.]generation [|][|] remote != session[.]remote"
+    OR NOT saf_payload_admission MATCHES "Thread[.]currentThread[(][)][.]isInterrupted[(][)]"
+    OR NOT saf_payload_admission MATCHES "deadline - android[.]os[.]SystemClock[.]elapsedRealtime[(][)] <= 0")
+  message(FATAL_ERROR "SAF payload admission must recheck the binding and deadline after authentication")
+endif()
 foreach(required IN ITEMS "mutex.isHeldByCurrentThread() || !mutex.tryLock()"
     "mappingAuthority.run(() -> selectGrantLocked(app, key, tree))"
     "mappingAuthority.run(() -> detachGrantLocked(app, key))"

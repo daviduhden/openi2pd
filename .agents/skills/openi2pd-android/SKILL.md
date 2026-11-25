@@ -139,6 +139,13 @@ run Gradle, install an APK or run a device test.
   Local wire-flags assertions exercise the proxy. Delivery evidence needs
   actual cross-process cancellation and Binder death after retirement.
 
+- Failed SAF authentication must distinguish a live Binder from an observed
+  dead one. Retire a live endpoint and keep the writer fence until the death
+  recipient or a negative liveness check confirms termination. A remote
+  transaction exception alone does not authorize rebind.
+- Recheck the absolute SAF payload deadline, interruption and binding after
+  synchronous authentication. That IPC may complete after the caller's
+  timeout, before the payload transaction has been admitted.
 
 When successful Lint reports a Lifecycle patch, inspect official release
 notes and move ViewModel and LiveData pins together with the dependency

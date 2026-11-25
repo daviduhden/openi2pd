@@ -344,8 +344,8 @@ final class TorrentSafStorage {
         }
     }
     /*
-     * Acquires the broker generation and control endpoint for this binding
-     * refuses a broker from another build, for example a process that
+     * Acquires the broker generation and control endpoint for this binding.
+     * Refuses a broker from another build, for example a process that
      * survived an in-place update and does not implement this protocol.
      */
     private static boolean ensureBroker(Session session) {
@@ -368,11 +368,14 @@ final class TorrentSafStorage {
                 return false;
             }
             authority = new BrokerAuthority(broker, control);
-        } catch (android.os.RemoteException dead) {
-            brokerDied(session.generation, session.remote.asBinder());
-            return false;
-        } catch (RuntimeException broken) {
-            retire(session);
+        } catch (android.os.RemoteException | RuntimeException broken) {
+            // A failed transaction can leave the remote process alive.
+            // Keep its writer fence until Binder death is observed.
+            IBinder binder = session.remote.asBinder();
+            if (binder.isBinderAlive())
+                retire(session);
+            else
+                brokerDied(session.generation, binder);
             return false;
         }
         synchronized (lock) {
@@ -1246,6 +1249,15 @@ final class TorrentSafStorage {
                 // for this binding has been authenticated.
                 if (!ensureBroker(session))
                     return Outcome.of(fallback, Failure.PROTOCOL);
+                // Authentication itself can consume the caller's deadline.
+                // Admit the payload only while this binding is current.
+                synchronized (lock) {
+                    if (generation != session.generation || remote != session.remote
+                            || Thread.currentThread().isInterrupted())
+                        return Outcome.of(fallback, Failure.UNAVAILABLE);
+                    if (deadline - android.os.SystemClock.elapsedRealtime() <= 0)
+                        return Outcome.of(fallback, Failure.TIMEOUT);
+                }
                 return Outcome.of(action.run(session), Failure.NONE);
             });
             long remaining = deadline - android.os.SystemClock.elapsedRealtime();

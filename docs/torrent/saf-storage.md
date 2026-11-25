@@ -85,8 +85,12 @@ these mappings or acknowledge an operation. Cleanup of a dead generation drops
 local entries immediately rather than waiting for a connection per file.
 
 Death recipients and lifecycle callbacks fence the old Binder. A disconnected
-but still-live broker is retired before rebind. Retries use capped exponential
-backoff with one call executor and one queued request; hung calls never create
+or failed-authentication broker that remains alive is retired before rebind.
+A transaction exception alone provides no evidence of process death. The
+writer fence stays in place until the old Binder is observed dead. Before
+sending a payload request, the IPC worker rechecks its absolute deadline,
+interruption and binding after authentication. Retries use capped exponential
+backoff with one call executor and one queued request. Hung calls never create
 replacement pools. Bind failure and revoked permission remain errors, with no
 native-path fallback. Native handles are now logical capabilities across broker
 restart, not raw remote IDs.
