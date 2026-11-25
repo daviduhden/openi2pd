@@ -1457,12 +1457,14 @@ if(android_detach_call EQUAL -1)
   message(FATAL_ERROR "The daemon stop path does not detach SAF payloads")
 endif()
 
-# Android SAF broker protocol v2 and the durable router run intent.
+# Android SAF broker protocol v3 and the durable router run intent.
 # These are compile-free guards for contracts whose real compilation
 # happens in the manual Android job; they catch an accidental
 # protocol/state downgrade in the Linux static lane first.
 file(READ "${PROJECT_ROOT}/android/app/src/main/aidl/org/openi2pd/router/ITorrentSafStorage.aidl"
   android_saf_aidl)
+file(READ "${PROJECT_ROOT}/android/app/src/main/aidl/org/openi2pd/router/ITorrentSafControl.aidl"
+  android_saf_control)
 file(READ "${PROJECT_ROOT}/android/app/src/main/java/org/openi2pd/router/TorrentSafStorageService.java"
   android_saf_broker)
 file(READ "${PROJECT_ROOT}/android/app/src/main/java/org/openi2pd/router/RouterRunState.java"
@@ -1474,20 +1476,30 @@ file(READ "${PROJECT_ROOT}/android/app/src/main/java/org/openi2pd/router/Address
 file(READ "${PROJECT_ROOT}/android/app/src/main/AndroidManifest.xml" android_manifest)
 
 foreach(required IN ITEMS
-    "const int API_VERSION = 2;"
+    "const int API_VERSION = 3;"
     "long handshake();"
+    "ITorrentSafControl openControl(long generation);"
     "long prepareExport(String uri, long length, long operation);"
-    "long openExport(long token, long operation);"
-    "oneway void retire(long generation);")
+    "long openExport(long token, long operation);")
   string(FIND "${android_saf_aidl}" "${required}" android_saf_contract)
   if(android_saf_contract EQUAL -1)
-    message(FATAL_ERROR "SAF AIDL v2 contract is missing: ${required}")
+    message(FATAL_ERROR "SAF AIDL v3 contract is missing: ${required}")
   endif()
 endforeach()
+foreach(required IN ITEMS "oneway interface ITorrentSafControl"
+    "void cancel(long operation);" "void retire(long generation);")
+  string(FIND "${android_saf_control}" "${required}" android_saf_contract)
+  if(android_saf_contract EQUAL -1)
+    message(FATAL_ERROR "SAF control endpoint contract is missing: ${required}")
+  endif()
+endforeach()
+if(android_saf_aidl MATCHES "void[ \t]+(cancel|retire)\\(")
+  message(FATAL_ERROR "SAF asynchronous control must require an acquired endpoint")
+endif()
 # A descriptor may only be mentioned in a comment, never in a
 # declaration.
 string(REGEX MATCH "\n[ \t]*[^/ \t][^\n]*ParcelFileDescriptor" android_saf_fd_export
-  "${android_saf_aidl}")
+  "${android_saf_aidl}\n${android_saf_control}")
 if(NOT android_saf_fd_export STREQUAL "")
   message(FATAL_ERROR "The SAF AIDL must never export a file descriptor")
 endif()
@@ -1495,6 +1507,16 @@ string(FIND "${android_saf_broker}" "new Caller(uid, Binder.getCallingPid())" an
 if(android_saf_owner EQUAL -1)
   message(FATAL_ERROR "The SAF broker does not bind capabilities to (uid, pid)")
 endif()
+foreach(required IN ITEMS "activeControl != this"
+    "Binder.getCallingUid() != owner.uid()"
+    "current.control != this"
+    "control.owner.equals(owner)"
+    "identity.claimRetirement(generation)")
+  string(FIND "${android_saf_broker}" "${required}" android_saf_binding)
+  if(android_saf_binding EQUAL -1)
+    message(FATAL_ERROR "SAF control authority is missing: ${required}")
+  endif()
+endforeach()
 string(FIND "${android_saf_broker}" "CANCEL_DEADLINE_MS" android_saf_cancel_stage)
 string(FIND "${android_saf_broker}" "KILL_DEADLINE_MS" android_saf_kill_stage)
 if(android_saf_cancel_stage EQUAL -1 OR android_saf_kill_stage EQUAL -1)

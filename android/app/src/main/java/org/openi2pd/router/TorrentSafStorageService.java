@@ -2,7 +2,7 @@
  * See the LICENSE file at the top of the project tree for copyright and
  * license details.
  *
- * openi2pd: capability-based SAF payload broker (protocol v2).
+ * openi2pd: capability-based SAF payload broker (protocol v3).
  *
  * Owns document descriptors in a separate process and never exports raw
  * FDs. Authorization is the application UID plus the exact (uid, pid)
@@ -61,7 +61,7 @@ public final class TorrentSafStorageService extends Service {
      * Wire contract version reported by {@link
      * ITorrentSafStorage#apiVersion()}.
      */
-    static final int API_VERSION = 2;
+    static final int API_VERSION = ITorrentSafStorage.API_VERSION;
     // Admission bounds. An over-limit request returns its typed failure
     // and never retires the broker process.
     static final int MAX_OPERATIONS = 8;
@@ -234,13 +234,15 @@ public final class TorrentSafStorageService extends Service {
     private static final class Operation {
         final long token;
         final Caller owner;
+        final Control control;
         final CancellationSignal signal = new CancellationSignal();
         ScheduledFuture<?> cancelDeadline;
         ScheduledFuture<?> killDeadline;
 
-        Operation(long token, Caller owner) {
+        Operation(long token, Caller owner, Control control) {
             this.token = token;
             this.owner = owner;
+            this.control = control;
         }
     }
 
@@ -270,7 +272,8 @@ public final class TorrentSafStorageService extends Service {
         thread.setDaemon(true);
         return thread;
     });
-    private volatile Caller primaryCaller;
+    // Guarded by operationLock. Only this endpoint can affect live work.
+    private Control activeControl;
 
     static boolean sameOwner(Caller owner, Caller caller) {
         return owner != null && owner.equals(caller);
@@ -301,7 +304,9 @@ public final class TorrentSafStorageService extends Service {
         synchronized (operationLock) {
             if (identity.retired())
                 return null;
-            Operation operation = new Operation(token, owner);
+            Control control = activeControl;
+            Operation operation = new Operation(token, owner,
+                    control != null && control.owner.equals(owner) ? control : null);
             if (admission.admit(token, owner, operation) == null)
                 return null;
             return operation;
@@ -452,11 +457,7 @@ public final class TorrentSafStorageService extends Service {
     private final ITorrentSafStorage.Stub binder = new ITorrentSafStorage.Stub() {
         @Override
         public long handshake() {
-            Caller owner = caller();
-            // The most recent handshake holds retirement authority, so
-            // a broker process that outlives an application restart
-            // still follows the client that currently owns the binding.
-            primaryCaller = owner;
+            caller();
             return identity.generation();
         }
 
@@ -963,21 +964,40 @@ public final class TorrentSafStorageService extends Service {
         }
 
         @Override
-        public void cancel(long operation) {
+        public ITorrentSafControl openControl(long generation) {
             Caller owner = caller();
+            synchronized (operationLock) {
+                if (owner.pid() <= 0 || identity.retired() || generation != identity.generation())
+                    return null;
+                activeControl = new Control(owner);
+                return activeControl;
+            }
+        }
+    };
+
+    /**
+     * Asynchronous control authority captured by a synchronous transaction.
+     * Remote oneway calls supply a UID but no caller PID.
+     */
+    private final class Control extends ITorrentSafControl.Stub {
+        private final Caller owner;
+
+        private Control(Caller owner) {
+            this.owner = owner;
+        }
+
+        @Override
+        public void cancel(long operation) {
             Operation current;
             synchronized (operationLock) {
+                if (activeControl != this || Binder.getCallingUid() != owner.uid())
+                    return;
                 Admission.Slot<Operation> slot = admission.find(operation);
                 current = slot == null ? null : slot.value();
+                if (current == null || current.control != this || !current.owner.equals(owner))
+                    return;
             }
-            // Cancellation is scoped to one operation and to the exact
-            // process that registered it. A slow export or close must
-            // not kill every torrent's descriptors, and a sibling
-            // component cannot abort ours.
-            if (current == null || !current.owner.equals(owner))
-                return;
-            // Oneway: no caller waits for this, and the broker's
-            // provider call is unwound by its own cancellation signal.
+            // Hold the exact signal and invoke it beyond operationLock.
             try {
                 current.signal.cancel();
             } catch (RuntimeException ignored) {
@@ -986,17 +1006,15 @@ public final class TorrentSafStorageService extends Service {
 
         @Override
         public void retire(long generation) {
-            Caller owner = caller();
-            Caller primary = primaryCaller;
-            // Only the process that performed the handshake may retire
-            // the broker, and only for the generation it was given.
-            if (primary != null && !primary.equals(owner))
-                return;
-            if (!identity.claimRetirement(generation))
-                return;
+            synchronized (operationLock) {
+                if (activeControl != this || Binder.getCallingUid() != owner.uid()
+                        || !identity.claimRetirement(generation))
+                    return;
+                activeControl = null;
+            }
             retireProcess();
         }
-    };
+    }
 
     /*
      * Resolves (and optionally creates) every component of a bounded

@@ -133,12 +133,11 @@ run Gradle, install an APK or run a device test.
   attempting a single dialog action.
 
 - Android Binder does not supply a caller PID to remote oneway transactions.
-  A synchronous handshake's process identity therefore cannot be compared
-  directly with the PID read in oneway SAF cancel or retire. Preserve the
-  existing cross-process authorization boundary when designing the
-  sideband fix. Local stub calls or a wire-flags assertion can pass while
-  delivery to the real broker rejects the request. Device coverage must
-  exercise both authorized cancellation and actual binder death.
+  Version 3 acquires the control endpoint synchronously, and cancellation
+  requires the same endpoint captured when the operation was admitted.
+  A replacement endpoint cannot inherit outstanding work by PID reuse.
+  Local wire-flags assertions exercise the proxy. Delivery evidence needs
+  actual cross-process cancellation and Binder death after retirement.
 
 
 When successful Lint reports a Lifecycle patch, inspect official release
@@ -515,7 +514,8 @@ does not resolve intentional ABI coverage or AGP deprecation findings.
   pure `BootUpReceiver.mayResume(action, autostartEnabled, runIntentRequested)`
   seam; `BootResumePolicyTest` (JVM) pins the matrix and
   `RouterServiceLifecycleTest` adds a device-side negative broadcast case.
-- SAF AIDL v2: `handshake` generation, one-shot owner-bound `prepareExport` →
+- SAF AIDL v3: `handshake` generation and caller-bound `openControl`
+  endpoint, one-shot owner-bound `prepareExport` →
   `openExport(token)`, `retire(generation)`, `(uid,pid)` ownership on every
   handle/root/operation/token, owner-scoped cancel/close/revoke, typed admission
   and a 15 s cancel / 30 s process fence. Admission caps are 8 concurrent

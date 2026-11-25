@@ -20,7 +20,7 @@ package org.openi2pd.router;
  * are checked by subtraction after {@code offset <= length} and
  * transfers are capped at {@link #MAX_TRANSFER} bytes per Binder call.
  * Rejection is always a typed {@code false}; a defect here would weaken
- * an authorization decision, so the caps are part of the AIDL v2
+ * an authorization decision, so the caps are part of the AIDL v3
  * contract and must not be raised without coordinator review.</p>
  */
 final class TorrentSafPolicy {

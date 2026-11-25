@@ -28,7 +28,7 @@ import org.junit.Test;
  * deadline rules. Everything exercised here is framework-free broker
  * state (one-shot export grants, the `(uid, pid)` owner binding, the
  * bounded admission table, transfer/path caps and the two watchdog
- * stages), so the AIDL v2 contract can be pinned without a device.
+ * stages), so the AIDL v3 contract can be pinned without a device.
  * Device evidence is still required for real providers.
  */
 public class TorrentSafProtocolTest {
@@ -43,7 +43,7 @@ public class TorrentSafProtocolTest {
 
     @Test
     public void wireContractIsPinnedToVersionTwo() {
-        assertEquals(2, TorrentSafStorageService.API_VERSION);
+        assertEquals(3, TorrentSafStorageService.API_VERSION);
         // Admission, handle and root bounds are part of the wire
         // contract.
         assertEquals(8, TorrentSafStorageService.MAX_OPERATIONS);

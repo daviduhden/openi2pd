@@ -925,7 +925,7 @@ Lint, JNI link, emulator or device run exists.
 The Android multiprocess/lifecycle continuation adds JVM-testable contracts:
 `RouterRunStateTest` (legacy `should_run` migration, drain expiry and clamping,
 corrupt deadlines, generation monotonicity, stopped-never-starts) and
-`TorrentSafProtocolTest` (AIDL v2 constants, one-shot export tokens, caller
+`TorrentSafProtocolTest` (AIDL v3 constants, one-shot export tokens, caller
 `(uid,pid)` binding, bounded admission, generation-fenced retirement,
 range/path bounds). Normal Gradle `testDebugUnitTest` discovers both. The
 instrumentation suite adds `TorrentSafBrokerContractTest` (real broker bind,

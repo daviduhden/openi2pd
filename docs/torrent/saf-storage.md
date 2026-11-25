@@ -108,7 +108,12 @@ AIDL IO includes operation tokens. `cancel` is scoped to one operation and does
 not kill the broker; `retire` remains the explicit process-fence operation.
 Tokens register before acquiring the IO lock, with at most eight active
 operations. Provider queries and descriptor opens use CancellationSignal.
-The AIDL is version 2: `handshake()` returns a CSPRNG broker generation,
+The AIDL is version 3. `handshake()` returns a CSPRNG broker generation.
+The synchronous `openControl(generation)` call records the calling process
+and returns a separate endpoint for oneway `cancel` and `retire`.
+Only the latest endpoint is active. Cancellation matches the exact
+endpoint and the owner captured at operation admission, because remote
+oneway Binder transactions do not supply a calling PID.
 `prepareExport` issues a one-shot owner-bound export token consumed by
 `openExport(token)`, `retire(generation)` is a one-shot fence, and every root,
 handle, operation and token is bound to the caller `(uid, pid)`. Admission

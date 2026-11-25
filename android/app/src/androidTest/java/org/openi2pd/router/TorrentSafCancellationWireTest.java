@@ -23,7 +23,7 @@ public final class TorrentSafCancellationWireTest {
         Binder endpoint = new Binder() {
             @Override
             protected boolean onTransact(int code, Parcel data, Parcel reply, int flags) {
-                data.enforceInterface("org.openi2pd.router.ITorrentSafStorage");
+                data.enforceInterface("org.openi2pd.router.ITorrentSafControl");
                 assertEquals(IBinder.FLAG_ONEWAY, flags & IBinder.FLAG_ONEWAY);
                 assertNull(reply);
                 if (calls[0] == 0)
@@ -36,7 +36,7 @@ public final class TorrentSafCancellationWireTest {
         };
         // An un-attached Binder deliberately forces the generated
         // remote proxy path.
-        ITorrentSafStorage proxy = ITorrentSafStorage.Stub.asInterface(endpoint);
+        ITorrentSafControl proxy = ITorrentSafControl.Stub.asInterface(endpoint);
         proxy.cancel(74231L);
         proxy.retire(9L);
         assertEquals(74231L, received[0]);

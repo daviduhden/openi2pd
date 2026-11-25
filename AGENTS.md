@@ -2147,7 +2147,13 @@ work can still publish later (`ANDROID-035`). Some persisted transitions read
 outside the write lock, so stale-state protection remains open (`ANDROID-033`).
 The boot/package-replace receiver starts only from the persisted intent.
 
-The SAF AIDL is version 2: `handshake()` returns a CSPRNG generation;
+The SAF AIDL is version 3: `handshake()` returns a CSPRNG generation;
+`openControl(generation)` issues a revocable endpoint in a synchronous
+transaction. Capture the calling owner and endpoint at operation admission.
+Oneway cancel checks the current endpoint, UID and exact operation ownership.
+Retirement checks the current endpoint, UID and generation; Binder death
+unfences replacement writers. Do not use a calling PID from a remote
+oneway transaction.
 `prepareExport` issues a one-shot owner-bound token consumed by
 `openExport(token)`; `retire(generation)` is a one-shot fence; every root,
 handle, operation and token is bound to the exact `(uid,pid)` that created it;

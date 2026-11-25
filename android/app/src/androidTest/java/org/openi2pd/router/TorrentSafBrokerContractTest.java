@@ -140,6 +140,12 @@ public final class TorrentSafBrokerContractTest {
         return operation++;
     }
 
+    private ITorrentSafControl control(long generation) throws android.os.RemoteException {
+        ITorrentSafControl endpoint = broker.openControl(generation);
+        assertNotNull("The synchronous acquisition did not issue a control endpoint", endpoint);
+        return endpoint;
+    }
+
     private static boolean awaitDeath(IBinder target, long timeoutMs) {
         long deadline = SystemClock.elapsedRealtime() + timeoutMs;
         while (SystemClock.elapsedRealtime() < deadline) {
@@ -153,7 +159,7 @@ public final class TorrentSafBrokerContractTest {
     @Test
     public void brokerAnswersVersionedHandshake() throws Exception {
         bind();
-        assertEquals(2, broker.apiVersion());
+        assertEquals(ITorrentSafStorage.API_VERSION, broker.apiVersion());
         long generation = broker.handshake();
         assertTrue("Broker generation must be a non-zero CSPRNG value", generation > 0);
         assertEquals(
@@ -167,12 +173,30 @@ public final class TorrentSafBrokerContractTest {
         // Zero, stale and negative generations are typed no-ops: a
         // delayed or replayed oneway frame must never fence a live
         // broker.
-        broker.retire(0L);
-        broker.retire(generation + 1);
-        broker.retire(-generation);
+        assertNull(broker.openControl(0L));
+        assertNull(broker.openControl(-generation));
+        ITorrentSafControl endpoint = control(generation);
+        endpoint.retire(0L);
+        endpoint.retire(generation + 1);
+        endpoint.retire(-generation);
         SystemClock.sleep(250);
         assertTrue("Broker died for a foreign generation", binder.isBinderAlive());
         assertEquals(generation, broker.handshake());
+    }
+
+    @Test
+    public void replacedControlCannotRetireTheBroker() throws Exception {
+        bind();
+        long generation = broker.handshake();
+        ITorrentSafControl stale = control(generation);
+        ITorrentSafControl active = control(generation);
+        assertNotEquals(stale.asBinder(), active.asBinder());
+        stale.retire(generation);
+        assertFalse("A revoked endpoint killed the active broker",
+                awaitDeath(binder, RETIRE_TIMEOUT_MS));
+        active.retire(generation);
+        assertTrue("The active endpoint did not retire the broker",
+                awaitDeath(binder, RETIRE_TIMEOUT_MS));
     }
 
     @Test
@@ -201,8 +225,9 @@ public final class TorrentSafBrokerContractTest {
         assertFalse(broker.removeEmptyDirectory(UNKNOWN, "", next()));
         broker.closeFile(UNKNOWN);
         broker.revokeTree(UNKNOWN);
-        broker.cancel(UNKNOWN);
-        broker.cancel(0L);
+        ITorrentSafControl endpoint = control(generation);
+        endpoint.cancel(UNKNOWN);
+        endpoint.cancel(0L);
         assertTrue("A refused capability must not kill the broker", binder.isBinderAlive());
         assertEquals(generation, broker.handshake());
     }
@@ -211,7 +236,7 @@ public final class TorrentSafBrokerContractTest {
     public void retireIsGenerationFencedAndRebindYieldsANewGeneration() throws Exception {
         bind();
         long generation = broker.handshake();
-        broker.retire(generation);
+        control(generation).retire(generation);
         assertTrue("Broker ignored its own retirement", awaitDeath(binder, RETIRE_TIMEOUT_MS));
         tearDown();
         long start = SystemClock.elapsedRealtime();
@@ -225,14 +250,14 @@ public final class TorrentSafBrokerContractTest {
         assertTrue(replacement > 0);
         assertNotEquals("A replacement broker must not reuse the fenced generation", generation,
                 replacement);
-        assertEquals(2, broker.apiVersion());
+        assertEquals(ITorrentSafStorage.API_VERSION, broker.apiVersion());
     }
 
     @Test
     public void reboundBrokerAnswersTheWholeTypedSurface() throws Exception {
         bind();
         long generation = broker.handshake();
-        broker.retire(generation);
+        control(generation).retire(generation);
         assertTrue("Broker ignored its own retirement", awaitDeath(binder, RETIRE_TIMEOUT_MS));
         tearDown();
         bind();

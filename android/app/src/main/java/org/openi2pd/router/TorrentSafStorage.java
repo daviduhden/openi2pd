@@ -79,14 +79,16 @@ final class TorrentSafStorage {
     // separate from `generation`, which fences this client's own
     // bindings: a broker replacement never reuses the previous process
     // generation.
-    private static volatile long brokerGeneration;
+    private record BrokerAuthority(long generation, ITorrentSafControl control) {}
+    // Guarded by lock and scoped to the current client binding.
+    private static BrokerAuthority brokerAuthority;
     // The one metadata export in progress, if any. Only this token may
     // be cancelled administratively; payload IO belongs to the native
     // engine.
     private static volatile long exportOperation;
     private static final AtomicBoolean exportCanceled = new AtomicBoolean();
     private static volatile IBinder retiringBinder;
-    private static final int REQUIRED_API = 2; // ITorrentSafStorage.API_VERSION
+    private static final int REQUIRED_API = ITorrentSafStorage.API_VERSION;
     // A bind is awaited at most this long before the typed fallback is
     // returned.
     private static final long BIND_WAIT_MS = 5000;
@@ -98,7 +100,6 @@ final class TorrentSafStorage {
     // provider that keeps the broker unresponsive must not prevent
     // rebinding forever.
     private static final long RETIREMENT_BOUND_MS = 5000;
-    private static final int RETIREMENT_CHECKS = 2;
     // Bounded bind-retry state. Guarded by `lock`.
     private static final BindBudget budget = new BindBudget();
     private static boolean bound, retryScheduled;
@@ -267,7 +268,7 @@ final class TorrentSafStorage {
                 } else {
                     remote = ITorrentSafStorage.Stub.asInterface(binder);
                     generation++;
-                    brokerGeneration = 0;
+                    brokerAuthority = null;
                     // A successful connection ends the failed-bind
                     // episode: a provider/service crash must never
                     // disable SAF storage until the application
@@ -343,53 +344,52 @@ final class TorrentSafStorage {
         }
     }
     /*
-     * Resolves the broker generation for this binding exactly once and
+     * Acquires the broker generation and control endpoint for this binding
      * refuses a broker from another build, for example a process that
-     * survived an in-place update and does not implement protocol v2.
+     * survived an in-place update and does not implement this protocol.
      */
     private static boolean ensureBroker(Session session) {
         synchronized (lock) {
-            if (brokerGeneration != 0)
+            if (TorrentSafStorage.generation != session.generation || remote != session.remote)
+                return false;
+            if (brokerAuthority != null)
                 return true;
         }
-        int api;
-        long generation;
+        BrokerAuthority authority;
         try {
-            api = session.remote.apiVersion();
-            generation = session.remote.handshake();
+            if (session.remote.apiVersion() != REQUIRED_API) {
+                retire(session);
+                return false;
+            }
+            long broker = session.remote.handshake();
+            ITorrentSafControl control = broker > 0 ? session.remote.openControl(broker) : null;
+            if (control == null) {
+                retire(session);
+                return false;
+            }
+            authority = new BrokerAuthority(broker, control);
         } catch (android.os.RemoteException dead) {
             brokerDied(session.generation, session.remote.asBinder());
             return false;
         } catch (RuntimeException broken) {
-            // An unmarshallable answer means this process does not
-            // speak the v2 contract. The generation is unknown, so
-            // retire(0) is a no-op by contract and the bounded
-            // retirement watch replaces the process.
-            retire(session);
-            return false;
-        }
-        if (api != REQUIRED_API || generation == 0) {
-            // The generation is unknown, so retire(0) is a no-op by
-            // contract; the bounded retirement watch replaces the
-            // process by unbinding it.
             retire(session);
             return false;
         }
         synchronized (lock) {
             if (TorrentSafStorage.generation != session.generation || remote != session.remote)
                 return false;
-            brokerGeneration = generation;
+            brokerAuthority = authority;
             return true;
         }
     }
     private static void retire(Session session) {
-        long broker;
+        BrokerAuthority authority;
         synchronized (lock) {
             if (generation != session.generation || remote != session.remote)
                 return;
             retiringBinder = session.remote.asBinder();
-            broker = brokerGeneration;
-            brokerGeneration = 0;
+            authority = brokerAuthority;
+            brokerAuthority = null;
             exportOperation = 0;
             remote = null;
             generation++;
@@ -399,55 +399,30 @@ final class TorrentSafStorage {
         // delayed or duplicated frame cannot fence a replacement broker
         // process.
         try {
-            session.remote.retire(broker);
+            if (authority != null)
+                authority.control().retire(authority.generation());
         } catch (android.os.RemoteException | RuntimeException dead) {
             if (!session.remote.asBinder().isBinderAlive())
                 brokerDied(session.generation, session.remote.asBinder());
         }
-        watchRetirement(session.remote.asBinder());
+        IBinder binder = session.remote.asBinder();
+        main.postDelayed(() -> finishRetirement(session.generation, binder), RETIREMENT_BOUND_MS);
     }
-    /*
-     * Bounds the retiring state. If the broker is still alive the
-     * binding is dropped so the process is destroyed and a fresh broker
-     * can be bound; a dead binder is normally resolved by its death
-     * recipient, which is given one extra check before the transition
-     * is forced.
-     */
-    private static void watchRetirement(IBinder binder) {
-        main.postDelayed(() -> checkRetirement(binder, 1), RETIREMENT_BOUND_MS);
-    }
-    private static void checkRetirement(IBinder binder, int attempt) {
-        synchronized (lock) {
-            if (retiringBinder != binder)
-                return; // The death recipient already completed the transition.
-            if (!binder.isBinderAlive() && attempt < RETIREMENT_CHECKS) {
-                main.postDelayed(() -> checkRetirement(binder, attempt + 1), RETIREMENT_BOUND_MS);
-                return;
-            }
-            retiringBinder = null;
-            if (remote != null && remote.asBinder() == binder)
-                remote = null;
+    private static void finishRetirement(long expected, IBinder binder) {
+        if (!binder.isBinderAlive()) {
+            brokerDied(expected, binder);
+            return;
         }
-        dropStaleBinding();
-    }
-    /*
-     * Unbinds a binding whose broker ignored (or never received)
-     * retirement.
-     */
-    private static void dropStaleBinding() {
-        boolean unbind;
         synchronized (lock) {
-            unbind = bound && context != null;
+            if (retiringBinder != binder || !bound || context == null)
+                return;
             bound = false;
         }
-        if (unbind) {
-            try {
-                context.unbindService(connection);
-            } catch (IllegalArgumentException ignored) {
-            }
-        }
-        synchronized (lock) {
-            scheduleBind();
+        // The broker fences itself on last unbind. Keep the death
+        // recipient and retain retiringBinder until death is observed.
+        try {
+            context.unbindService(connection);
+        } catch (IllegalArgumentException ignored) {
         }
     }
     private static void disconnected(long expected) {
@@ -455,7 +430,7 @@ final class TorrentSafStorage {
             if (expected >= 0 && expected != generation)
                 return;
             remote = null;
-            brokerGeneration = 0;
+            brokerAuthority = null;
             exportOperation = 0;
             generation++;
             lock.notifyAll();
@@ -463,9 +438,7 @@ final class TorrentSafStorage {
         }
     }
     private static void scheduleBind() {
-        // A stale retiringBinder is cleared by the bounded retirement
-        // watch, so this never returns forever on an unresolved
-        // retirement.
+        // A live retired broker keeps replacement writers fenced out.
         if (context == null || retryScheduled || retiringBinder != null)
             return;
         long delay = budget.charge();
@@ -1043,12 +1016,7 @@ final class TorrentSafStorage {
                 return;
             session = new Session(remote, generation, operation);
         }
-        try {
-            session.remote.cancel(operation);
-        } catch (android.os.RemoteException | RuntimeException failure) {
-            if (!session.remote.asBinder().isBinderAlive())
-                brokerDied(session.generation, session.remote.asBinder());
-        }
+        cancelOperation(session);
     }
     public static boolean remove(long root, String path, long length) {
         if (!TorrentSafStorageService.validPath(path) || length < 0)
@@ -1323,9 +1291,18 @@ final class TorrentSafStorage {
         }
     }
     private static void cancelOperation(Session session) {
+        BrokerAuthority authority;
+        synchronized (lock) {
+            if (generation != session.generation || remote != session.remote)
+                return;
+            authority = brokerAuthority;
+        }
         try {
-            session.remote.cancel(session.operation);
-        } catch (android.os.RemoteException | RuntimeException ignored) {
+            if (authority != null)
+                authority.control().cancel(session.operation);
+        } catch (android.os.RemoteException | RuntimeException failure) {
+            if (!session.remote.asBinder().isBinderAlive())
+                brokerDied(session.generation, session.remote.asBinder());
         }
     }
     private TorrentSafStorage() {

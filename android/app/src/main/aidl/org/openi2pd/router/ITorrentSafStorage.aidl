@@ -1,6 +1,6 @@
 // See the LICENSE file at the top of the project tree for copyright and
 // license details. openi2pd: bounded, app-private SAF payload
-// capabilities (protocol v2).
+// capabilities (protocol v3).
 //
 // Authorization model
 // -------------------
@@ -11,7 +11,7 @@
 // a different component of the same application cannot read, write,
 // finish, delete, close, revoke, cancel or retire another component's
 // root, handle, operation or token. A caller's pid (not only its uid)
-// is recorded by handshake(), by every operation registration and by
+// is recorded by openControl(), by every operation registration and by
 // every created root/handle/token.
 //
 // Admission
@@ -33,19 +33,12 @@
 // No descriptor is ever exported: ParcelFileDescriptor stays
 // broker-internal.
 package org.openi2pd.router;
-interface ITorrentSafStorage {
-    // Wire contract version. Version 2 adds the generation fence
-    // (handshake and retire(long)), the one-shot export token
-    // (prepareExport/openExport) and the (uid, pid) owner binding on
-    // every capability.
-    const int API_VERSION = 2;
+import org.openi2pd.router.ITorrentSafControl;
 
-    // Returns this broker process generation: a non-zero CSPRNG
-    // identity chosen when the service was created. The client keeps it
-    // separate from its own binding fence and must present it to
-    // retire(long). The calling (uid, pid) becomes the retirement
-    // authority for this generation. No admission bound applies; it
-    // never touches provider state.
+interface ITorrentSafStorage {
+    const int API_VERSION = 3;
+
+    // Returns the stable, CSPRNG-generated broker process identity.
     long handshake();
 
     // Returns API_VERSION so a client can refuse a broker from another
@@ -142,14 +135,7 @@ interface ITorrentSafStorage {
     // created through it. A foreign or unknown root is a no-op.
     void revokeTree(long root);
 
-    // Out-of-band: cancels exactly the operation registered by this
-    // caller's (uid, pid) and never waits for the data-operation lock.
-    // A foreign or unknown operation is a no-op.
-    oneway void cancel(long operation);
-
-    // Retires the broker process exactly once for the generation
-    // returned by handshake(). A stale, wrong-caller or zero generation
-    // is a no-op. Death, rather than closing a descriptor from another
-    // thread, is what fences every old writer.
-    oneway void retire(long generation);
+    // Authenticates the calling process synchronously, then issues its
+    // asynchronous control capability for this broker generation.
+    ITorrentSafControl openControl(long generation);
 }
