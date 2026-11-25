@@ -1447,3 +1447,18 @@ toolchain diagnostics. No warning suppression was added.
 and partial network restrictions. OpenBSD logs SSH host enrollment and
 MSYS2 reports package-manager process shutdown. These identify runner
 capabilities or tooling, separately from first-party compiler warnings.
+
+## 2d04e42e warning follow-up
+
+**CW-2D04-01.** Windows compiled manual emitted mandoc warnings
+`blank line in fill mode, using .sp` and `new sentence, new line` at
+`source-i2pd-tui.1:8:1` and `:58:48`. Artifact 15054766851 retains the
+diagnostics. Removed the same preamble blank line in `i2pd-tui.1`,
+`i2pd.1` and `i2pdctl.1`, and split the sentence at its existing stop.
+All four canonical pages were checked for matching patterns. Retained
+fatal mandoc diagnostics. HHC and CHM verification remain pending CI.
+[Windows run](https://github.com/daviduhden/openi2pd/actions/runs/45681532960)
+
+The published arm64 lint and AGP/protobuf notices recur (CW-586-01).
+Runner Landlock capability notices recur (CW-586-02). The reviewed
+native logs showed no new first-party compiler warning.

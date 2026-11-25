@@ -1087,3 +1087,11 @@ death phases. Review endpoint ownership and revocation across all
 consumers. Use the exact test XML and its sibling outcomes before
 classifying a timeout. Preserve the existing deadline while investigating.
 [TF-586-01](TEST-FAILURES.md#58652c91-manual-batch)
+
+## Own asynchronous diagnostic observers
+
+A service connection's lifetime is distinct from an explicit Binder
+death registration. For teardown checks, retain an exact death observer
+through unbind and retire it on every outcome. When comparing contained
+child startup, record each exit separately and let ordinary loader
+breakpoints proceed without suppressing genuine exception events.

@@ -2597,3 +2597,12 @@ from this revision and remains pending manual CI.
 
 The rolling OpenSSL 4.x runs supply 4.1.0 evidence. The exact 4.0.x
 compatibility floor remains without a current lane.
+
+## 2d04e42e compilation and linking
+
+The [manual batch](TEST-FAILURES.md#2d04e42e-manual-batch) reached native
+test execution in the previously recorded compiler/provider families.
+The repeated CMake diagnostic is a source-contract test failure
+(TF-2D04-01). The Windows documentation target stopped before HHC
+(CW-2D04-01). The reviewed logs did not identify a new first-party
+compiler or linker error.

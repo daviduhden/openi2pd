@@ -2793,3 +2793,10 @@ runs, the full Perl profile, API 29 Binder retirement and the remaining MSVC
 worker startup failure. Shared desktop libraries require a separate design
 because the native archives are declared explicitly static. Shared Android
 JNI has its own existing lanes.
+
+## 2d04e42e validation follow-up
+
+Re-run the independent source contracts and native matrices after
+TF-2D04-01. Validate the exact SAF observer and mandoc changes before
+closing the API 29 and Windows documentation lanes. Continue using the
+closed loader probe for RT-087.

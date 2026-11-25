@@ -9152,3 +9152,13 @@ scope found one unused pidfile assignment. The service now uses that
 value in its daemon arguments, preserving the rendered path. The
 service source contract follows the same single assignment. The
 31-file Perl::Critic profile remained clean. Manual CI remains pending.
+
+## 2d04e42e CI audit
+
+Reviewed the ten exact-run logs, artifact diagnostics and the historical
+index delta. Confirmed a shared CMake fixture assertion failure, CHM
+source diagnostics and stale Binder death observation. The published
+Perl pass validates the earlier Perl cleanup. Prepared source-guard
+literal operands, CHM Perl inventory registration, roff corrections and
+a fixture-owned Binder death registration. These are Implemented /
+static and Pending CI tests. MSVC RT-087 remains open.

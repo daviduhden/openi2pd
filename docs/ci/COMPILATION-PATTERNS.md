@@ -675,3 +675,10 @@ When Android release lint reports a missing ABI, compare the packaged ABI
 filters with any emulator-only overrides. An x86_64 device job does not
 alter the ABI contents of the arm64 release artifact. Keep native compiler
 warnings, release compatibility lint and dependency deprecations separate.
+
+## Keep source contracts compatible with lint formatting
+
+When a source guard checks a fixture diagnostic as text, keep the
+diagnostic in a literal operand and quote it when interpolating into a
+regex. Trace all markers consuming the same source file. A formatting
+rewrite can otherwise break multiple platform lanes after a clean build.

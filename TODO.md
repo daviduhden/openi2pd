@@ -3028,3 +3028,10 @@ Implemented / static, Pending CI compilation and Pending CI tests.
 |---|---|---|
 | CI-586-01 | Implemented / static | Pending CI tests for opt-in strict Windows and OpenBSD builds and the local Perl profile cleanup. |
 | CI-586-02 | In progress | Resolve TF-586-01 / RT-586-01 Android retirement and RT-087 MSVC setup using exact evidence. |
+
+## 2d04e42e manual CI follow-up
+
+| ID | State | Remaining work |
+|---|---|---|
+| CI-2D04-01 | Implemented / static | Pending CI tests for the Doxygen source contract, Perl inventories, SAF death observer and CHM source lint. |
+| CI-2D04-02 | In progress | RT-087 requires the detached exit and baseline results under the same containment. The root cause of Windows worker initialization remains open. |

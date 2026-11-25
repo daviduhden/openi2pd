@@ -413,3 +413,12 @@ Select `warnings_as_errors` in either manual workflow to enable the same
 first-party CMake warning target used by the Linux OpenSSL workflows.
 This adds `/WX` in the MSVC lane and `-Werror` in the Clang lanes. Release
 and dependency options remain those of their existing jobs.
+
+### Source contracts and documentation tool failures
+
+Review static-contract failures by their first assertion, even when
+they appear inside sanitizer or packaging jobs. The
+[2d04e42e matrix](ci/TEST-FAILURES.md#2d04e42e-manual-batch) records
+which jobs reached that assertion and which actually reported runtime
+test failures. Windows Help tool output is retained separately from
+the native compiler diagnostics.

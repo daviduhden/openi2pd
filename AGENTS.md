@@ -3351,3 +3351,9 @@ against adjacent tests before changing a deadline. A later success on the
 same process separates an earlier retirement admission or delivery failure
 from slow Binder death notification. Trace other same-process publishers
 of control endpoints during a rebind.
+
+When changing diagnostic regex formatting, inspect every textual source
+guard that consumes the fixture. Store the expected diagnostic in a
+literal operand and interpolate it as quoted text. For a last-unbind
+test, own a Binder death registration independently of the service
+connection and release it after observing the exact broker generation.

@@ -823,3 +823,9 @@ configured emulator build before classifying ABI lint. For Windows
 loader snaps, retain the exact DLL attach line and image identity.
 A nearby child-process exit supplies a comparison variable, not causal
 evidence. Record strict-warning input values when reviewing a lane.
+
+When a source-contract failure repeats after successful compilation,
+group the affected jobs by the failing guard. Compare literal fixture
+operands with the guard before modifying compiler settings. In a
+multi-child startup diagnostic, record each child's own result and
+distinguish the debugger's initial breakpoint from a product trap.

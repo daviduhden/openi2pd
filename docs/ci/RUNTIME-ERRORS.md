@@ -3249,3 +3249,23 @@ The exact loader-snap artifact identifies the DLL attach routine as
 The trace also records a nested conhost exit `0xc0000022`. This identifies
 a lead for an authority-free comparison of console creation modes. The
 trace does not establish why the initializer failed.
+
+## 2d04e42e runtime follow-up
+
+**RT-2D04-01.** API 29 logcat confirms broker SIGKILL and process death
+while teardown's local Binder observation still reported alive. The
+fixture now retains an independently registered death recipient for the
+exact Binder across the last unbind. Pending API 29 CI.
+[Android run](https://github.com/daviduhden/openi2pd/actions/runs/45681504411)
+
+**RT-087 recurrence.** MSVC artifact 15054934227 records baseline PID 564
+failing KERNELBASE attach with `0xc0000142`. Detached PID 3660 progressed
+to an initial debugger breakpoint and CDB stopped before a detached exit
+result. The artifact does not establish a successful detached startup.
+[Windows run](https://github.com/daviduhden/openi2pd/actions/runs/45681532960)
+
+The MSVC collector now continues on the initial-loader `ibp` event
+after its arming marker. The source contract rejects stopping on that
+event, filtering all breakpoint exceptions and arming out of order.
+The comparison keeps the existing restricted token, Job and descriptor
+policy. Pending CI tests.

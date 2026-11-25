@@ -2094,3 +2094,40 @@ The exact OpenBSD JUnit/CTest artifact 15050754392 records
 `storage workers refuse a root runner`. Source review also identifies
 the later unconditional skip for the unimplemented exec-free provisioning,
 so switching the fixture account alone would not establish broker coverage.
+
+## 2d04e42e manual batch
+
+All ten workflows ran on `2d04e42ea39ee42ba4d426993da8211a130b9c9c`.
+The historical index now covers 715 runs on 98 SHAs, with 293 successes,
+353 failures and 69 cancellations. Full logs were inspected for this batch.
+Earlier cancellation and retention evidence remains in the preceding entries.
+
+| Workflow | Result |
+|---|---|
+| [Linux](https://github.com/daviduhden/openi2pd/actions/runs/45681523242) | Both distribution floor jobs failed TF-2D04-01. Component installation and interop passed. |
+| [Linux OpenSSL 3.x](https://github.com/daviduhden/openi2pd/actions/runs/45681511309) | GCC and Clang failed TF-2D04-01. |
+| [Linux OpenSSL 4.x](https://github.com/daviduhden/openi2pd/actions/runs/45681517294) | GCC and Clang failed TF-2D04-01. |
+| [OpenBSD](https://github.com/daviduhden/openi2pd/actions/runs/45681528367) | TF-2D04-01. |
+| [Windows](https://github.com/daviduhden/openi2pd/actions/runs/45681532960) | MSYS2 failed TF-2D04-01. Compiled Help stopped at mandoc. MSVC repeated RT-087. |
+| [Android](https://github.com/daviduhden/openi2pd/actions/runs/45681504411) | Arm64 passed. API 29 failed TF-2D04-02. Signing skipped by input. |
+| [Validation](https://github.com/daviduhden/openi2pd/actions/runs/45681552494) | Three sanitizer jobs and static skills failed TF-2D04-01. Perl, source documentation and bounded fuzz smoke passed. |
+| [Packaging](https://github.com/daviduhden/openi2pd/actions/runs/45681545217) | Service contracts failed TF-2D04-01. Package jobs passed. |
+| [Instrumented OpenSSL TSan](https://github.com/daviduhden/openi2pd/actions/runs/45681538568) | Passed. |
+| [Agent Knowledge](https://github.com/daviduhden/openi2pd/actions/runs/45681497381) | Passed. |
+
+**TF-2D04-01.** The CMake source guard at
+`tests/check-build-system.cmake:528` searched for unescaped English text in
+a Perl fixture that now joins words with regex space classes. All five
+diagnostic operands were reviewed. The fixtures now pass literal
+diagnostics through quoted regex interpolation. The static guard checks
+the literal operands, while the fixture suite still checks runtime
+messages and statuses. Pending CI tests.
+
+**TF-2D04-02.** Artifact 15054144379 contains five API 29 teardown errors
+with `Fixture broker survived its last unbind`. Logcat records process
+death for the corresponding broker instances. See RT-2D04-01 for the
+observer-lifetime correction.
+
+**TF-586-02 remote follow-up.** Artifact 15053938210 confirms 1587 passing
+Test::More cases across eight files and zero Perl::Critic findings on this
+SHA. Changes prepared after this batch remain pending CI.
