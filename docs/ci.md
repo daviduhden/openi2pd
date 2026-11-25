@@ -406,3 +406,10 @@ record installed package versions, build logs and CTest JUnit. Ubuntu
 security updates remain enabled. The exact OpenSSL 3.0.2 floor, native
 MSVC minimum, additional standard libraries and an immutable dependency
 snapshot remain separate.
+
+### Strict Windows and OpenBSD builds
+
+Select `warnings_as_errors` in either manual workflow to enable the same
+first-party CMake warning target used by the Linux OpenSSL workflows.
+This adds `/WX` in the MSVC lane and `-Werror` in the Clang lanes. Release
+and dependency options remain those of their existing jobs.

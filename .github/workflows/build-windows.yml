@@ -15,6 +15,10 @@ name: Windows
 on:
   workflow_dispatch:
     inputs:
+      warnings_as_errors:
+        description: Treat project compiler warnings as errors
+        type: boolean
+        default: false
       heap_diagnostics:
         description: Run targeted MSVC tests under installed CDB/PageHeap
         type: boolean
@@ -28,10 +32,6 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # MSYS2/Clang64 validates the full dependency set and the Win32 TUI
-  # backend with the same toolchain used for the distribution helper.
-  build:
-    name: Windows MSYS2 Clang64 build and tests
   windows-manual:
     name: Windows compiled manual
     runs-on: windows-2022
@@ -175,6 +175,10 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+  # MSYS2/Clang64 validates the full dependency set and the Win32 TUI
+  # backend with the same toolchain used for the distribution helper.
+  build:
+    name: Windows MSYS2 Clang64 build and tests
     runs-on: windows-2022
     timeout-minutes: 45
     env:
@@ -204,6 +208,8 @@ jobs:
             mingw-w64-clang-x86_64-miniupnpc
       - name: Configure and build
         id: msys2_build
+        env:
+          I2PD_STRICT_WARNINGS: ${{ inputs.warnings_as_errors && 'ON' || 'OFF' }}
         run: |  # zizmor: ignore[misfeature] required by the MSYS2 Clang64 toolchain supplied by setup-msys2
           # Native Strawberry Perl uses different path encoding rules.
           # Select the MSYS host interpreter for the full UTF-8 contract.
@@ -217,6 +223,7 @@ jobs:
           cmake -S build -B build-output -G Ninja \
             -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
             -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
+            -DI2PD_WARNINGS_AS_ERRORS="$I2PD_STRICT_WARNINGS" \
             -DI2PD_BUILD_TUI=ON -DI2PD_TUI_REQUIRED=ON -DWITH_HARDENING=ON \
             -DI2PD_REQUIRE_PERL=ON -DPERL_EXECUTABLE="$msys_perl" \
             -DGIT_EXECUTABLE="$msys_git"
@@ -376,6 +383,8 @@ jobs:
             zlib:x64-windows `
             --clean-after-build
       - name: Configure MSVC
+        env:
+          I2PD_STRICT_WARNINGS: ${{ inputs.warnings_as_errors && 'ON' || 'OFF' }}
         run: |
           cmake -S build -B build-msvc -G "Visual Studio 17 2022" -A x64 `
             -DCMAKE_POLICY_DEFAULT_CMP0141=NEW `
@@ -384,6 +393,7 @@ jobs:
             -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
             -DCMAKE_BUILD_TYPE=Release `
             -DBUILD_TESTING=ON `
+            "-DI2PD_WARNINGS_AS_ERRORS=$env:I2PD_STRICT_WARNINGS" `
             -DI2PD_BUILD_TOOLS=OFF `
             -DI2PD_TUI_REQUIRED=ON `
             -DWITH_HARDENING=ON `

@@ -14,6 +14,11 @@ name: OpenBSD
 # tab.
 on:
   workflow_dispatch:
+    inputs:
+      warnings_as_errors:
+        description: Treat project compiler warnings as errors
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -54,6 +59,7 @@ jobs:
           if ! cmake -S build -B build-output -G Ninja \
             -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
             -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
+            -DI2PD_WARNINGS_AS_ERRORS=${{ inputs.warnings_as_errors && 'ON' || 'OFF' }} \
             -DI2PD_REQUIRE_PERL=ON \
             -DI2PD_OPENSSL_EXPECT=LibreSSL > configure.log 2>&1; then
             cat configure.log
