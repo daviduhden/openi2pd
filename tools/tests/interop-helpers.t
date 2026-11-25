@@ -81,18 +81,21 @@ for my $host ( 'example.invalid', '127.0.0.2', '::1' ) {
     ( $code, $out, $err ) =
       invoke( 'sam-stream-send.pl', $host, 17656, $secret );
     isnt( $code, 0, 'nonapproved endpoint fails before networking' );
-    unlike( $out . $err, qr/SECRET_SENTINEL/, 'request remains private' );
+    unlike( $out . $err, qr/ SECRET_SENTINEL /x, 'request remains private' );
 }
 ( $code, $out, $err ) = invoke( 'sam-stream-send.pl', '127.0.0.1', 17656,
     fixture( 'oversized-request.txt', 'x' x 65537 ) );
 isnt( $code, 0, 'oversized request fails before connecting' );
-like( $err, qr/SAM fixture exceeds limit/, 'request bound is explicit' );
+like( $err, qr/ SAM\ fixture\ exceeds\ limit /x, 'request bound is explicit' );
 is( $out, '', 'oversized request has no published content' );
 ( $code, $out, $err ) =
   invoke( 'sam-stream-send.pl', '127.0.0.1', 17656, $secret );
 isnt( $code, 0, 'non-HELLO request fails before networking' );
-unlike( $out . $err,
-    qr/SECRET_SENTINEL/, 'invalid request diagnostics are private' );
+unlike(
+    $out . $err,
+    qr/ SECRET_SENTINEL /x,
+    'invalid request diagnostics are private'
+);
 my $hello = fixture( 'hello.txt', "HELLO VERSION MIN=3.0 MAX=3.3\n" );
 
 for my $response (

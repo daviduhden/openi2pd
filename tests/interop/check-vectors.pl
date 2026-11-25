@@ -12,6 +12,7 @@
 use strict;
 use warnings;
 use 5.016;
+use Carp         qw(croak);
 use Getopt::Long qw(GetOptions);
 use Digest::SHA  qw(sha256_hex);
 use JSON::PP;
@@ -161,10 +162,10 @@ sub read_input {
     close $fh;
     $raw = '' unless defined $raw;
     return $raw if $format ne 'hex';
-    $raw =~ s/^[ \t]*#.*$//mg;
-    $raw =~ s/\s+//g;
+    $raw =~ s/ ^[ \t]*\#.*$ //mgx;
+    $raw =~ s/ \s+ //gx;
     die "odd hex length in $path\n" if length($raw) % 2;
-    die "non-hex character in $path\n" unless $raw =~ /\A[0-9a-fA-F]*\z/;
+    die "non-hex character in $path\n" unless $raw =~ / \A[0-9a-fA-F]*\z /x;
     return pack 'H*', $raw;
 }
 
@@ -172,7 +173,7 @@ sub load_cases {
     my @found;
     find(
         sub {
-            return unless -f $_ && /\.case\.json\z/;
+            return unless -f $_ && / \.case\.json\z /x;
             push @found, File::Spec->rel2abs($_);
         },
         $vectors,
@@ -184,7 +185,7 @@ sub load_cases {
         my $text = <$fh>;
         close $fh;
         my $data = eval { JSON::PP->new->decode($text) };
-        die "invalid JSON in $path: $@" unless defined $data;
+        croak "invalid JSON in $path: $@" unless defined $data;
         $data->{_path} = $path;
         $data->{_dir}  = dirname($path);
         push @cases, $data;
@@ -208,50 +209,116 @@ sub check_provenance {
         push @errors, 'missing provenance.spec entries';
     }
     return @errors unless defined $ref && length $ref;
-    for my $j ( @{ $prov->{java} } ) {
-        my $line_no  = $j->{line};
-        my $relative = $j->{path};
-        if (  !defined $line_no
-            || ref $line_no
-            || $line_no !~ /\A[1-9][0-9]{0,6}\z/ )
-        {
-            push @errors, 'provenance line must be a positive integer';
-            next;
-        }
-        if (  !defined $relative
-            || ref $relative
-            || $relative !~ m{\A(?:[\w.-]+/)*[\w.-]+\.java\z}a
-            || $relative =~ m{(?:\A|/)\.\.?(?:/|\z)} )
-        {
-            push @errors, 'provenance path must be relative';
-            next;
-        }
-        if (  !defined $j->{contains}
-            || ref $j->{contains}
-            || !length $j->{contains} )
-        {
-            push @errors, 'provenance contains must be a non-empty string';
-            next;
-        }
+    for my $citation ( @{ $prov->{java} } ) {
+        my $error = check_java_citation($citation);
+        push @errors, $error if defined $error;
+    }
+    return @errors;
+}
 
-        # Resolve source from the pinned commit, so checkout filters
-        # and working-tree flags cannot change citation contents.
-        my ( $source, $error ) =
-          run_git( 'cat-file', 'blob', "$COMMIT:$relative" );
-        if ( defined $error ) {
-            push @errors, "provenance file unavailable in $COMMIT: $relative";
-            next;
-        }
-        my @lines = split /\n/, $source;
-        my $line  = $lines[ $line_no - 1 ];
-        if ( !defined $line ) {
-            push @errors, "provenance line $j->{line} past EOF: $j->{path}";
-            next;
-        }
-        chomp $line;
-        if ( index( $line, $j->{contains} ) < 0 ) {
-            push @errors,
+sub check_java_citation {
+    my ($j)      = @_;
+    my $line_no  = $j->{line};
+    my $relative = $j->{path};
+    if (  !defined $line_no
+        || ref $line_no
+        || $line_no !~ / \A[1-9][0-9]{0,6}\z /x )
+    {
+        return 'provenance line must be a positive integer';
+    }
+    if (  !defined $relative
+        || ref $relative
+        || $relative !~ m{ \A(?:[\w.-]+/)*[\w.-]+\.java\z }ax
+        || $relative =~ m{ (?:\A|/)\.\.?(?:/|\z) }x )
+    {
+        return 'provenance path must be relative';
+    }
+    if (  !defined $j->{contains}
+        || ref $j->{contains}
+        || !length $j->{contains} )
+    {
+        return 'provenance contains must be a non-empty string';
+    }
+
+    # Resolve source from the pinned commit, so checkout filters
+    # and working-tree flags cannot change citation contents.
+    my ( $source, $error ) = run_git( 'cat-file', 'blob', "$COMMIT:$relative" );
+    if ( defined $error ) {
+        return "provenance file unavailable in $COMMIT: $relative";
+    }
+    my @lines = split / \n /x, $source;
+    my $line  = $lines[ $line_no - 1 ];
+    if ( !defined $line ) {
+        return "provenance line $j->{line} past EOF: $j->{path}";
+    }
+    chomp $line;
+    if ( index( $line, $j->{contains} ) < 0 ) {
+        return
 "provenance mismatch $j->{path}:$j->{line}: expected '$j->{contains}'";
+    }
+    return;
+}
+
+sub check_i2np_fixture {
+    my ( $c, $bytes, $expectation ) = @_;
+    my @errors;
+    if ( length($bytes) < 16 ) {
+        push @errors, 'shorter than the 16-byte I2NP header';
+    }
+    else {
+        # I2NP header: type, message id, expiration, payload size,
+        # then a one-byte checksum. Java defines that byte as the
+        # first SHA-256 byte of the payload, so the fixture must
+        # agree with its header.
+        my ( $type, $msgid, $exp, $size, $chk ) = unpack 'C N Q> n C',
+          substr( $bytes, 0, 16 );
+        my $payload = substr( $bytes, 16 );
+        if ( $expectation eq 'accept' ) {
+            push @errors, "declared size $size != payload " . length($payload)
+              if $size != length($payload);
+            my $want = hex substr( sha256_hex($payload), 0, 2 );
+            push @errors,
+              sprintf( 'checksum %02x != SHA-256 prefix %02x', $chk, $want )
+              if $chk != $want;
+        }
+        my $ev = $c->{expect}{value};
+        if ( $expectation eq 'accept' && ref($ev) eq 'HASH' ) {
+            push @errors, "expect.value.type $ev->{type} != header type $type"
+              if defined $ev->{type} && $ev->{type} != $type;
+            push @errors, "expect.value.size $ev->{size} != header size $size"
+              if defined $ev->{size} && $ev->{size} != $size;
+            push @errors,
+              "expect.value.message_id $ev->{message_id} != header id $msgid"
+              if defined $ev->{message_id} && $ev->{message_id} != $msgid;
+            push @errors,
+"expect.value.expiration $ev->{expiration} != header expiration $exp"
+              if defined $ev->{expiration} && $ev->{expiration} != $exp;
+        }
+    }
+    return @errors;
+}
+
+sub check_i2cp_fixture {
+    my ( $c, $bytes, $expectation ) = @_;
+    my @errors;
+    if ( length($bytes) < 5 ) {
+        push @errors, 'shorter than the 5-byte I2CP length/type header';
+    }
+    else {
+        my ( $len, $type ) = unpack 'N C', substr( $bytes, 0, 5 );
+        if ( $expectation eq 'accept' && 5 + $len != length($bytes) ) {
+            push @errors,
+                "I2CP length $len does not match "
+              . ( length($bytes) - 5 )
+              . ' body bytes';
+        }
+        my $ev = $c->{expect}{value};
+        if ( $expectation eq 'accept' && ref($ev) eq 'HASH' ) {
+            push @errors, "expect.value.type $ev->{type} != I2CP type $type"
+              if defined $ev->{type} && $ev->{type} != $type;
+            push @errors,
+              "expect.value.length $ev->{length} != I2CP length $len"
+              if defined $ev->{length} && $ev->{length} != $len;
         }
     }
     return @errors;
@@ -263,69 +330,15 @@ sub static_checks {
     my $kind        = $c->{kind}        // '';
     my $expectation = $c->{expectation} // '';
     push @errors, 'format must be hex or raw'
-      unless ( $c->{format} // '' ) =~ /\A(?:hex|raw)\z/;
+      unless ( $c->{format} // '' ) =~ / \A(?:hex|raw)\z /x;
     if ( $expectation ne 'accept' && $expectation ne 'reject' ) {
         push @errors, 'expectation must be accept or reject';
     }
     if ( $kind eq 'i2np' ) {
-        if ( length($bytes) < 16 ) {
-            push @errors, 'shorter than the 16-byte I2NP header';
-        }
-        else {
-            # I2NP header: type, message id, expiration, payload size,
-            # then a one-byte checksum. Java defines that byte as the
-            # first SHA-256 byte of the payload, so the fixture must
-            # agree with its header.
-            my ( $type, $msgid, $exp, $size, $chk ) = unpack 'C N Q> n C',
-              substr( $bytes, 0, 16 );
-            my $payload = substr( $bytes, 16 );
-            if ( $expectation eq 'accept' ) {
-                push @errors,
-                  "declared size $size != payload " . length($payload)
-                  if $size != length($payload);
-                my $want = hex substr( sha256_hex($payload), 0, 2 );
-                push @errors,
-                  sprintf( 'checksum %02x != SHA-256 prefix %02x', $chk, $want )
-                  if $chk != $want;
-            }
-            my $ev = $c->{expect}{value};
-            if ( $expectation eq 'accept' && ref($ev) eq 'HASH' ) {
-                push @errors,
-                  "expect.value.type $ev->{type} != header type $type"
-                  if defined $ev->{type} && $ev->{type} != $type;
-                push @errors,
-                  "expect.value.size $ev->{size} != header size $size"
-                  if defined $ev->{size} && $ev->{size} != $size;
-                push @errors,
-"expect.value.message_id $ev->{message_id} != header id $msgid"
-                  if defined $ev->{message_id} && $ev->{message_id} != $msgid;
-                push @errors,
-"expect.value.expiration $ev->{expiration} != header expiration $exp"
-                  if defined $ev->{expiration} && $ev->{expiration} != $exp;
-            }
-        }
+        push @errors, check_i2np_fixture( $c, $bytes, $expectation );
     }
     elsif ( $kind eq 'i2cp' ) {
-        if ( length($bytes) < 5 ) {
-            push @errors, 'shorter than the 5-byte I2CP length/type header';
-        }
-        else {
-            my ( $len, $type ) = unpack 'N C', substr( $bytes, 0, 5 );
-            if ( $expectation eq 'accept' && 5 + $len != length($bytes) ) {
-                push @errors,
-                    "I2CP length $len does not match "
-                  . ( length($bytes) - 5 )
-                  . ' body bytes';
-            }
-            my $ev = $c->{expect}{value};
-            if ( $expectation eq 'accept' && ref($ev) eq 'HASH' ) {
-                push @errors, "expect.value.type $ev->{type} != I2CP type $type"
-                  if defined $ev->{type} && $ev->{type} != $type;
-                push @errors,
-                  "expect.value.length $ev->{length} != I2CP length $len"
-                  if defined $ev->{length} && $ev->{length} != $len;
-            }
-        }
+        push @errors, check_i2cp_fixture( $c, $bytes, $expectation );
     }
     elsif ( $kind eq 'sam' ) {
         push @errors, 'SAM fixtures must be raw text' if $c->{format} ne 'raw';
@@ -344,10 +357,8 @@ sub canonical {
     return JSON::PP->new->canonical->encode($data);
 }
 
-sub run_binary {
-    my ( $bin, $c, $input ) = @_;
-    open my $ph, '-|', $bin, '--case', $c->{id}, $input
-      or return ( undef, "cannot execute $bin: $!" );
+sub collect_harness_output {
+    my ($ph)      = @_;
     my $out       = '';
     my $too_large = 0;
 
@@ -363,11 +374,20 @@ sub run_binary {
         }
         $out .= $chunk;
     }
+    return ( $out, $too_large );
+}
+
+sub run_binary {
+    my ( $bin, $c, $input ) = @_;
+    open my $ph, '-|', $bin, '--case', $c->{id}, $input
+      or return ( undef, "cannot execute $bin: $!" );
+    my ( $out, $too_large ) = collect_harness_output($ph);
     my $closed      = close $ph;
     my $wait_status = $?;
     return ( undef, 'harness output is too large' ) if $too_large;
     return ( undef, 'cannot reap harness process' ) if $wait_status < 0;
     my $signal = $wait_status & 127;
+
     if ($signal) {
         return ( undef, 'harness terminated abnormally' )
           if $^O eq 'MSWin32' || $signal == 127;
@@ -377,27 +397,31 @@ sub run_binary {
     return ( undef, "harness exited $status" ) if $status != 0;
     return ( undef, 'cannot close harness output' ) unless $closed;
     my $got = eval { JSON::PP->new->decode($out) };
-    return ( undef, 'harness output is not JSON: ' . ( $@ =~ s/\s+\z//r ) )
+    return ( undef, 'harness output is not JSON: ' . ( $@ =~ s/ \s+\z //rx ) )
       unless defined $got;
     return ( $got, undef );
 }
 
-my $ref_state = 0;
-if ( defined $reference && length $reference ) {
-    $ref_state = validate_reference();
-    exit 2 if $ref_state == 2;
-}
-elsif ($require_reference) {
-    print STDERR
+sub check_reference_option {
+    my $ref_state = 0;
+    if ( defined $reference && length $reference ) {
+        $ref_state = validate_reference();
+        exit 2 if $ref_state == 2;
+    }
+    elsif ($require_reference) {
+        print STDERR
 "no fixture reference checkout: set I2P_JAVA_FIXTURE_REFERENCE or pass --reference\n";
-    exit 2;
-}
-else {
-    print
+        exit 2;
+    }
+    else {
+        print
 "reference: not supplied; skipping tag/commit and provenance line checks\n";
+    }
+    return $ref_state;
 }
 
-my @cases = load_cases();
+my $ref_state = check_reference_option();
+my @cases     = load_cases();
 @cases = grep { $_->{id} eq $case } @cases if defined $case && length $case;
 if ( !@cases ) {
     print STDERR "no matching cases\n";
@@ -414,61 +438,21 @@ if ($list) {
 
 my ( $ok, $failed, $known, $unexpected_pass, $executed ) = ( 0, 0, 0, 0, 0 );
 
-for my $c (@cases) {
-    my @errors;
-    for
-      my $field (qw(id kind input format sha256 expectation expect provenance))
-    {
-        push @errors, "missing field $field" unless exists $c->{$field};
-    }
-    if (@errors) {
-        printf "FAIL %s\n", $c->{id} // $c->{_path};
-        print "  - $_\n" for @errors;
-        ++$failed;
-        next;
-    }
-    if (  !defined $c->{input}
-        || ref $c->{input}
-        || $c->{input} =~ m{\A/}
-        || $c->{input} =~ m{(?:\A|/)\.\.(?:/|\z)} )
-    {
-        printf "FAIL %s\n  - input path must be relative\n", $c->{id};
-        ++$failed;
-        next;
-    }
-    my $input = File::Spec->catfile( $c->{_dir}, $c->{input} );
-    my $bytes;
-    eval { $bytes = read_input( $input, $c->{format} ); 1 } or do {
-        printf "FAIL %s\n  - %s\n", $c->{id}, $@;
-        ++$failed;
-        next;
-    };
-    my $sha = sha256_hex($bytes);
-    push @errors, "sha256 $sha != manifest $c->{sha256}"
-      if $sha ne $c->{sha256};
-    push @errors, check_provenance( $c, $ref_state ? $reference : undef );
-    push @errors, static_checks( $c, $bytes );
-
-    if (@errors) {
-        printf "FAIL %s\n", $c->{id};
-        print "  - $_\n" for @errors;
-        ++$failed;
-        next;
-    }
-
+sub compare_case {
+    my ( $c, $input ) = @_;
     if ( !defined $binary || !length $binary ) {
         printf "STATIC-OK %-38s %s\n", $c->{id},
           ( defined $c->{known_gap} ? '[known gap]' : '' );
         if   ( defined $c->{known_gap} ) { ++$known; }
         else                             { ++$ok; }
-        next;
+        return;
     }
 
     if ( !-x $binary ) {
         printf "FAIL %s\n  - harness is not executable: %s\n", $c->{id},
           $binary;
         ++$failed;
-        next;
+        return;
     }
 
     my ( $got, $err ) = run_binary( $binary, $c, $input );
@@ -476,7 +460,7 @@ for my $c (@cases) {
     if ( defined $err ) {
         printf "FAIL %s\n  - %s\n", $c->{id}, $err;
         ++$failed;
-        next;
+        return;
     }
     my $same = canonical($got) eq canonical( $c->{expect} );
     if ($same) {
@@ -499,7 +483,57 @@ for my $c (@cases) {
         print "  actual:   ", canonical($got),           "\n";
         ++$failed;
     }
+    return;
 }
+
+sub validate_case {
+    my ($c) = @_;
+    my @errors;
+    for
+      my $field (qw(id kind input format sha256 expectation expect provenance))
+    {
+        push @errors, "missing field $field" unless exists $c->{$field};
+    }
+    if (@errors) {
+        printf "FAIL %s\n", $c->{id} // $c->{_path};
+        print "  - $_\n" for @errors;
+        ++$failed;
+        return;
+    }
+    if (  !defined $c->{input}
+        || ref $c->{input}
+        || $c->{input} =~ m{ \A/ }x
+        || $c->{input} =~ m{ (?:\A|/)\.\.(?:/|\z) }x )
+    {
+        printf "FAIL %s\n  - input path must be relative\n", $c->{id};
+        ++$failed;
+        return;
+    }
+    my $input = File::Spec->catfile( $c->{_dir}, $c->{input} );
+    my $bytes;
+    eval { $bytes = read_input( $input, $c->{format} ); 1 } or do {
+        printf "FAIL %s\n  - %s\n", $c->{id}, $@;
+        ++$failed;
+        return;
+    };
+    my $sha = sha256_hex($bytes);
+    push @errors, "sha256 $sha != manifest $c->{sha256}"
+      if $sha ne $c->{sha256};
+    push @errors, check_provenance( $c, $ref_state ? $reference : undef );
+    push @errors, static_checks( $c, $bytes );
+
+    if (@errors) {
+        printf "FAIL %s\n", $c->{id};
+        print "  - $_\n" for @errors;
+        ++$failed;
+        return;
+    }
+
+    compare_case( $c, $input );
+    return;
+}
+
+validate_case($_) for @cases;
 
 printf
 "\n%d case(s): %d static/vector ok, %d failed, %d known gap, %d unexpected pass\n",
