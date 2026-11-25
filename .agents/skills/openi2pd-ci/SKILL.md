@@ -803,3 +803,17 @@ In shell cleanup guards, quote literal dot and dot-dot case alternatives.
 They retain their POSIX matching behavior and avoid a false source-command
 match in `checkbashisms`. Record ShellCheck and portability outcomes
 separately.
+
+After a configuration checker changes, search the Test::More fixture builders
+as well as the real configuration. A broad root CTest failure can block
+later platform-only probes in the same guest step. Inventory the skipped
+evidence by phase and require XML from every phase actually attempted.
+
+Let the optional Perl::Critic step run after successful tooling installation
+even if Test::More fails. Keep both outcomes visible in the job and retain
+the Test::More transcript with the independent critic report.
+
+When API 29 Gradle dependency resolution receives HTTP 429, compare
+the job's cache keys and actual hits before changing the workflow.
+The UI job can restore the arm64 Gradle cache for the same dependency
+inputs, while native vcpkg caches keep distinct triplet keys.

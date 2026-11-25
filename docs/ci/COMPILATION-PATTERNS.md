@@ -642,3 +642,11 @@ zero captures where the grammar accepts them. The 48680786 review applied
 this to TOML tokens, Markdown fragments, navigation entries, workflow
 triggers and CMake list extraction. See
 [TF-486-01](TEST-FAILURES.md#48680786-manual-batch).
+
+## Configuration contract changes require fixture inventory
+
+Review each synthetic producer of a configuration alongside the real
+file and its checker. Search by configuration key and former value.
+Gradle's Android resource qualifier `zh-rCN` differs from the locale
+metadata tag `zh-CN`. Preserve both spellings at their own boundaries.
+[TF-029-01](TEST-FAILURES.md#029ffd46-manual-batch)

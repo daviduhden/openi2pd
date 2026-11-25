@@ -3126,3 +3126,33 @@ active generation or operation. Keep both positive retirement and
 foreign-authority rejection fixtures, and add real cross-process
 cancellation evidence before marking it validated.
 [API 29 job](https://github.com/daviduhden/openi2pd/actions/runs/44999485666/job/137137652481)
+
+## 029ffd46 runtime follow-up
+
+RT-087 recurred in the focused MSVC supervisor test. RT-486-01 remains
+open because Android API 29 stopped during dependency resolution.
+ASan+UBSan, UBSan and TSan report no sanitizer signature in the reviewed
+logs, but each suite recorded the shared locale fixture failure. The
+separate provider TSan and bounded fuzz suites passed.
+[Exact batch](TEST-FAILURES.md#029ffd46-manual-batch)
+
+The MSVC 19.44.35230.0 job passed 35 of 36 tests. Artifact 14966043315
+ties the armed loader snaps to SHA-256
+`1DE85D42B2958123609CAF086C3973CE661FE1F294F829C9F87BA3F37E3E88DC`.
+The child exited 3221225794 (0xC0000142) before authentication and the
+matched KERNELBASE PDB `0792E1E7A24BB52249313BF74137D2B11` again points to
+DLL_PROCESS_ATTACH at RVA 0x1b170. The internal failing operation remains
+open. The separate process exit cannot establish causality.
+[MSVC job](https://github.com/daviduhden/openi2pd/actions/runs/45487510107/job/138776710433)
+
+The fuzz smoke suite disabled leak detection. The instrumented OpenSSL
+4.1.0 TSan runner reported its Landlock ABI 8 network restriction ceiling.
+
+RT-486-01 has a local SAF v3 correction. The broker issues a synchronous,
+generation-bound control endpoint and checks that exact capability on
+oneway cancellation and retirement. Operation admission retains the
+corresponding control authority. The device fixture verifies real Binder
+death, rebind and refusal of a replaced endpoint. Cross-process provider
+cancellation with an authorized live document remains open. Pending CI
+tests.
+[Android Binder calling identity](https://developer.android.com/reference/android/os/Binder#getCallingPid())

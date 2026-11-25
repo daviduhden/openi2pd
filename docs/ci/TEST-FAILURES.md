@@ -1904,3 +1904,64 @@ non-root fixture still checks that an unprivileged caller cannot clear
 supplementary groups. The root-started binary runs from a root-owned
 directory and has a separate required JUnit result. Pending CI tests.
 [OpenBSD job](https://github.com/daviduhden/openi2pd/actions/runs/44999485867/job/137137661029)
+
+## 029ffd46 manual batch
+
+The paginated inventory contains 675 runs across 94 SHAs, including 268
+successes, 338 failures and 69 cancellations. Full logs for the ten runs
+below belong to 029ffd4641be7f40e5c616615cd2231f97007f48.
+
+| Run | Exact batch outcome |
+|---|---|
+| [Agent knowledge](https://github.com/daviduhden/openi2pd/actions/runs/45487509537) | Passed. |
+| [Android](https://github.com/daviduhden/openi2pd/actions/runs/45487509934) | Arm64 passed, including packaged-locale check. API 29 Android instrumentation blocked by HTTP 429 during Gradle dependency resolution. Signing skipped by input. |
+| [Linux](https://github.com/daviduhden/openi2pd/actions/runs/45487510099) | Component install and Java reference lane passed. The GCC 13 and Clang 17 floor jobs each failed only the Perl maintenance fixture among 279 tests. |
+| [OpenSSL 3](https://github.com/daviduhden/openi2pd/actions/runs/45487510059) | GCC and Clang each failed only the Perl maintenance fixture among 279 tests. |
+| [OpenSSL 4](https://github.com/daviduhden/openi2pd/actions/runs/45487509920) | GCC and Clang each failed only the Perl maintenance fixture among 279 tests. |
+| [OpenBSD](https://github.com/daviduhden/openi2pd/actions/runs/45487509975) | Broad suite failed the same fixture among 274 selections, blocking the later credential probes and POSIX front-end build. |
+| [Windows](https://github.com/daviduhden/openi2pd/actions/runs/45487510107) | MSYS2 failed the same fixture among 263 selections. MSVC failed the supervisor case among 36 selections. |
+| [Provider TSan](https://github.com/daviduhden/openi2pd/actions/runs/45487509958) | Focused instrumented OpenSSL test passed. |
+| [Packaging](https://github.com/daviduhden/openi2pd/actions/runs/45487509869) | Five jobs passed. |
+| [Validation](https://github.com/daviduhden/openi2pd/actions/runs/45487510039) | Three sanitizer jobs failed the Perl fixture among 279 selections each. Perl quality stopped in Test::More. Fuzz smoke passed 15/15. |
+
+**TF-029-01.** Test::More cases 448 and 503 failed their positive baselines
+for Chinese plurals and LF endings. Both synthetic Gradle configurations
+retained the obsolete bare `zh` filter while the checker now requires
+`zh-rCN`. The production Gradle config and its static contract use the
+new spelling. A repository search found exactly two stale executable
+fixture copies. Both now use the supported qualifier, with a witnessed
+bare-filter mutation and diagnostic assertion before the plural variants.
+The existing CTest and optional Perl lanes run these cases. Pending CI tests.
+[Perl quality job](https://github.com/daviduhden/openi2pd/actions/runs/45487510039/job/138776712391)
+
+**TF-029-02.** The x86_64 API 29 run stopped on Gradle plugin-classpath
+dependency resolution after Maven Central returned HTTP 429. That job
+did not execute any instrumentation assertions and supplies no SAF
+retirement evidence. Arm64 still supplies evidence for the APK locale
+checks. Keep the API 29 lane enabled.
+[API 29 job](https://github.com/daviduhden/openi2pd/actions/runs/45487509934/job/138776710614)
+
+**TF-029-03.** The OpenBSD artifact contained the broad CTest report
+and lacked both dedicated credential reports. A failed broad CTest
+previously stopped the remaining guest phases. Separate steps now
+allow the probes and the POSIX build after their specific prerequisites.
+The broad suite retains its own status and the guest copies back each
+report independently. The workflow checker pins these prerequisites.
+Pending CI tests.
+[OpenBSD job](https://github.com/daviduhden/openi2pd/actions/runs/45487509975/job/138776714780)
+
+The Perl quality job now retains the Test::More transcript and runs
+Perl::Critic after successful tool installation even if a preceding
+test fails. Both failures still propagate to the job.
+
+Both Android jobs missed their Gradle caches for this batch. The UI job
+now tries the arm64 Gradle cache for the same build-input hash before
+downloading dependencies with an empty cache. The x86_64 native cache
+remains triplet-specific. A cold batch or a dependency missing from
+both caches may still hit the external rate limit. Pending CI tests.
+[Maven Central's HTTP 429 documentation](https://central.sonatype.org/faq/429-error/)
+
+The Linux OpenSSL composite now collects focused torrent/client/profile
+results and standalone Perl evidence after successful compilation even
+if the broad CTest step fails. The existing output retains all JUnit
+files and each phase preserves its failure. Pending CI tests.

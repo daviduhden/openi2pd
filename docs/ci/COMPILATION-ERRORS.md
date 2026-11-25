@@ -2546,3 +2546,10 @@ Clang/libstdc++ 13 tuple-instantiation lane. Windows, OpenBSD,
 Homebrew OpenSSL 3/4 and Android built far enough to execute tests.
 The three workflow failures occurred after compilation. See the
 [exact run matrix](TEST-FAILURES.md#48680786-manual-batch).
+
+## 029ffd46 compilation and dependency follow-up
+
+The native failing lanes in the [run matrix](TEST-FAILURES.md#029ffd46-manual-batch)
+compiled and linked through their CTest selections. The shared locale
+fixture failure belongs to TF-029-01. Android API 29 dependency resolution
+stopped before instrumentation and is tracked as TF-029-02.

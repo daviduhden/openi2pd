@@ -3307,3 +3307,9 @@ before consuming them across guards, and use definedness when the grammar
 allows empty or zero values. Distinguish passing Test::More results from a
 later Perl::Critic exit. For interoperability, record when a pinned reference
 and vectors pass but a differential binary was not supplied.
+
+When a source checker changes a closed configuration literal, search every
+synthetic producer for the setting and its old spelling. Verify positive
+fixture baselines before mutating an independent field. Obtain evidence for
+each prerequisite independently when one cross-platform fixture blocks
+later diagnostic phases.

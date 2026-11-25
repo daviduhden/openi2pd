@@ -1039,3 +1039,12 @@ success early. Compare the test's diagnostics with the claimed coverage.
 For a credential-drop positive control, start the fixture under the
 authority the operation requires and assert the effective IDs and group
 set in the child. Exercise the non-root refusal separately.
+
+## Validate fixture baselines against the current schema
+
+A successful production source check can coexist with a failing synthetic
+fixture. Run each fixture baseline before applying its mutation, require
+the mutation to change the intended field and assert the corresponding
+diagnostic. When a common fixture affects multiple platform suites, group
+the failures by the shared source and retain each lane's result.
+[TF-029-01](TEST-FAILURES.md#029ffd46-manual-batch)

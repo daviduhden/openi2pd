@@ -9047,3 +9047,17 @@ reviewed capture boundaries and resolved the repository Perl::Critic
 findings in the TOML parser and the extensionless i2pdctl client. The
 remaining severity-3 profile findings stay open. Perl and native regression
 suites remain pending manual CI.
+
+## 029ffd46 CI follow-up
+
+The common locale fixture failures (TF-029-01) are Implemented / static
+and Pending CI tests. API 29 dependency resolution (TF-029-02) blocked
+device evidence. Windows startup RT-087 still reports CI failure, and
+the optional Perl profile has no new execution evidence.
+[Batch inventory](docs/ci/TEST-FAILURES.md#029ffd46-manual-batch)
+
+SAF v3 control endpoint and independent Linux/OpenBSD/Perl diagnostic
+phases are Implemented / static and Pending CI tests. Real Binder
+retirement/death/rebind and stale endpoint cases are prepared. Positive
+cross-process provider cancellation remains Pending. Android API 29
+dependency caching is broadened only for the matching Gradle inputs.

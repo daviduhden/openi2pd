@@ -1363,3 +1363,27 @@ Android toolchain output also notes the AGP built-in Kotlin opt-out
 and a transitive protobuf 3.25.5 Unsafe deprecation. The Java 25 source
 target and AGP workaround stay in place. Recheck them against the AGP
 classpath when its toolchain advances.
+
+## 029ffd46 warning review
+
+The Android arm64 Lint report retains the two `ChromeOsAbiSupport`
+warnings because the production variants still select arm64. The AGP
+`android.builtInKotlin=false` deprecation and Android SDK manifest waits
+are separate toolchain diagnostics. Keep the Java 25 and supported ABI
+requirements explicit while investigating them.
+[Android run](https://github.com/daviduhden/openi2pd/actions/runs/45487509934)
+
+The optional Perl job stopped at Test::More and did not run Perl::Critic.
+Carry the previous lint findings forward until their profile executes.
+[Validation run](https://github.com/daviduhden/openi2pd/actions/runs/45487510039)
+
+**CW-029-01.** The successful Debian job reported sixteen
+`debugedit: Unknown DWARF DW_FORM_0x1f20/0x1f21` diagnostics during
+`dh_strip`, after `dh_dwz`. Artifact 14965597841 records debugedit
+1:5.0-5build2, dwz 0.15-1build6 and debhelper 13.14.1ubuntu5. The forms
+are GNU alternate-reference and alternate-string entries emitted in
+DWZ multifile processing. The normal packages passed their checks.
+The artifact contains no debug-symbol package to establish the effect
+on its contents. Track the packaging-tool interaction separately.
+[Debian job](https://github.com/daviduhden/openi2pd/actions/runs/45487509869/job/138776710975)
+[elfutils DWARF extension registry](https://sourceware.org/elfutils/DwarfExtensions)
