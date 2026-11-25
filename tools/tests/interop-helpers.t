@@ -62,7 +62,8 @@ sub fixture {
     close $file         or die "close fixture failed\n";
     return $path;
 }
-my $valid = fixture( 'quoted space.hex', "# comment\n \t# indented\n00 41 ff\n" );
+my $valid =
+  fixture( 'quoted space.hex', "# comment\n \t# indented\n00 41 ff\n" );
 my ( $code, $out, $err ) = invoke( 'hex-to-binary.pl', $valid );
 is( $code, 0,                      'valid commented hexadecimal succeeds' );
 is( $out,  pack( 'H*', '0041ff' ), 'stdout is exact binary including NUL' );
@@ -117,8 +118,8 @@ for my $response (
             alarm 15;
             my $peer = $listener->accept or POSIX::_exit(92);
             my $line = <$peer>;
-            defined $line && $line eq "HELLO VERSION MIN=3.0 MAX=3.3\n"
-              or POSIX::_exit(93);
+            POSIX::_exit(93)
+              if !defined $line || $line ne "HELLO VERSION MIN=3.0 MAX=3.3\n";
             print {$peer} $response->[0] or POSIX::_exit(94);
             close $peer;
             POSIX::_exit(0);
@@ -141,7 +142,7 @@ for my $response (
         }
         unlike(
             $out . $err,
-            qr/SECRET_SENTINEL|REPLY_SECRET/,
+            qr/ SECRET_SENTINEL | REPLY_SECRET /x,
             'no protocol data logged'
         );
         waitpid( $pid, 0 ) == $pid or die "wait for server failed\n";

@@ -21,19 +21,22 @@ my $script = File::Spec->catfile( $Bin, File::Spec->updir, 'scripts',
     'validate-branding.pl' );
 ok( -f $script, 'validate-branding.pl exists' );
 
-my $opened = open( my $fh, '-|', $^X, $script );
+sub capture_validator {
+    my ($path) = @_;
+    open my $fh, '-|', $^X, $path or return ();
+    local $/ = undef;
+    my $output = <$fh> // '';
+    my $closed = close $fh;
+    return ( 1, $output, $closed, $? );
+}
+
+my ( $opened, $output, $closed, $status ) = capture_validator($script);
 ok( $opened, 'validator starts' );
-my $output = '';
 if ( !$opened ) {
     fail('validator exits successfully');
     fail('validator reports success');
 }
 else {
-    local $/ = undef;
-    $output = <$fh>;
-    my $closed = close $fh;
-    my $status = $?;
-
     # A signal can leave the shifted exit value at zero. Require the
     # successful pipe close and the complete wait word, not just >> 8.
     ok( $closed && $status == 0, 'validator exits successfully' );
