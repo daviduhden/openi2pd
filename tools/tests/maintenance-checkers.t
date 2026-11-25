@@ -1158,16 +1158,28 @@ workflow_crash_fixtures($root);
           . '<service android:name="AppLocalesMetadataHolderService" />'
           . '</manifest>'
     );
-    write_file(
-        File::Spec->catfile( $android, 'app', 'build.gradle' ),
-        'androidResources { localeFilters += ["en", "es", "ru", "zh"] }'
-    );
+    my $gradle = File::Spec->catfile( $android, 'app', 'build.gradle' );
+    my $valid_filters =
+      'androidResources { localeFilters += ["en", "es", "ru", "zh-rCN"] }';
+    write_file( $gradle, $valid_filters );
     make_path(
         File::Spec->catdir( $android, 'fastlane', 'metadata', 'android', $_ ) )
       for qw(en-US es-ES ru-RU zh-CN);
 
     my ( $code, $out ) = run_checker( $locale_checker, '--root', $android );
     is( $code, 0, 'locale checker accepts other-only Chinese plurals' );
+
+    my $bare_chinese = $valid_filters;
+    ok( $bare_chinese =~ s/zh-rCN/zh/, 'mutated the Gradle resource qualifier' );
+    write_file( $gradle, $bare_chinese );
+    ( $code, $out ) = run_checker( $locale_checker, '--root', $android );
+    is( $code, 1, 'locale checker rejects the bare Chinese filter' );
+    like(
+        $out,
+        qr/Gradle\s+localeFilters\s+must\s+be\s+en,\s+es,\s+ru,\s+zh-rCN/x,
+        'Gradle resource qualifier failure is explicit'
+    );
+    write_file( $gradle, $valid_filters );
 
     my $zh_path = File::Spec->catfile( $res, $dirs{'zh-CN'}, 'strings.xml' );
     write_file( $zh_path,
@@ -1734,7 +1746,7 @@ CPP
     );
     write_file(
         File::Spec->catfile( $android, 'app', 'build.gradle' ),
-        'androidResources { localeFilters += ["en", "es", "ru", "zh"] }'
+        'androidResources { localeFilters += ["en", "es", "ru", "zh-rCN"] }'
     );
     make_path(
         File::Spec->catdir( $android, 'fastlane', 'metadata', 'android', $_ ) )
