@@ -334,52 +334,32 @@ namespace client
 
 	std::shared_ptr<i2p::data::LeaseSet> LeaseSetDestination::FindLeaseSet (const i2p::data::IdentHash & ident)
 	{
-		// Callable from any thread. The lookup and the expired-entry removal
-		// take only m_RemoteLeaseSetsMutex; the "expires soon" refresh is
-		// posted to the destination service and re-locks the map inside its
-		// own callback, so the caller keeps using the snapshot it already
-		// received rather than a half-updated entry.
+		// Select and erase the same expired entry under one lock. Keep its
+		// last owner alive until after unlocking. Refresh is posted without
+		// holding the cache lock.
 		std::shared_ptr<i2p::data::LeaseSet> remoteLS;
+		bool expired;
 		{
 			std::lock_guard<std::mutex> lock (m_RemoteLeaseSetsMutex);
 			auto it = m_RemoteLeaseSets.find (ident);
-			if (it != m_RemoteLeaseSets.end ()) remoteLS = it->second;
+			if (it == m_RemoteLeaseSets.end ()) return nullptr;
+			remoteLS = it->second;
+			expired = remoteLS->IsExpired ();
+			if (expired) m_RemoteLeaseSets.erase (it);
+		}
+		if (expired)
+		{
+			LogPrint (eLogWarning, "Destination: Remote LeaseSet expired");
+			return nullptr;
 		}
 
-		if (remoteLS)
+		if (remoteLS->ExpiresSoon ())
 		{
-			if (!remoteLS->IsExpired ())
-			{
-				if (remoteLS->ExpiresSoon ())
-				{
-					LogPrint (eLogDebug, "Destination: Lease Set expires soon, updating before expire");
-					// update now before expiration for smooth handover
-					std::weak_ptr<LeaseSetDestination> weak = weak_from_this ();
-					RequestDestination (ident,
-						[weak, ident] (std::shared_ptr<i2p::data::LeaseSet> ls)
-						{
-							auto s = weak.lock ();
-							if (s && ls && !ls->IsExpired ())
-							{
-								ls->PopulateLeases ();
-								{
-									std::lock_guard<std::mutex> _lock (s->m_RemoteLeaseSetsMutex);
-									s->m_RemoteLeaseSets[ident] = ls;
-								}
-							}
-						});
-				}
-				return remoteLS;
-			}
-			else
-			{
-				LogPrint (eLogWarning, "Destination: Remote LeaseSet expired");
-				std::lock_guard<std::mutex> lock (m_RemoteLeaseSetsMutex);
-				m_RemoteLeaseSets.erase (ident);
-				return nullptr;
-			}
+			LogPrint (eLogDebug, "Destination: Lease Set expires soon, updating before expire");
+			// DatabaseStore processing owns freshness and publication.
+			RequestDestination (ident);
 		}
-		return nullptr;
+		return remoteLS;
 	}
 
 	std::shared_ptr<const i2p::data::LocalLeaseSet> LeaseSetDestination::GetLeaseSet ()

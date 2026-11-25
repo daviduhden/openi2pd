@@ -99,6 +99,11 @@ peer or add a hidden external checkout. The reference is for reading only.
 
 ## Known issues and decisions
 
+- Select and retire an expired remote LeaseSet under one cache lock.
+  Keep a local owner so destruction occurs after unlocking. A near-expiry
+  lookup requests refresh outside the lock; DatabaseStore owns the only
+  verified publication path and callbacks must not repopulate that snapshot.
+
 - The reference/vector lane can report 24 successes and two known gaps
   while explicitly skipping differentials without --binary. Focused native
   group counts (10/3/9) are a different suite. Trace each harness invocation

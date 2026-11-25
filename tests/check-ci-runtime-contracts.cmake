@@ -517,6 +517,11 @@ require_runtime_source("tests/test-i2p-service-readiness.cpp"
 require_runtime_source("tests/CMakeLists.txt" "test-tunnel-destination-cache")
 require_runtime_source("tests/CMakeLists.txt" "test-destination-leaseset-session")
 require_runtime_order("libi2pd/Destination.cpp"
+  "LeaseSetDestination::FindLeaseSet (" "LeaseSetDestination::GetLeaseSet ()"
+  "lock (m_RemoteLeaseSetsMutex);" "remoteLS = it->second;"
+  "expired = remoteLS->IsExpired ();" "if (expired) m_RemoteLeaseSets.erase (it);"
+  "\n\t\t}\n\t\tif (expired)" "RequestDestination (ident);")
+require_runtime_order("libi2pd/Destination.cpp"
   "const uint8_t storeType =" "auto makeLeaseSet ="
   "NETDB_STORE_TYPE_LEASESET && from" "return;" "switch (storeType)")
 

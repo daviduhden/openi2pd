@@ -2,7 +2,7 @@
  * See the LICENSE file at the top of the project tree for copyright
  * and license details.
  *
- * Pins LeaseSet1 session provenance before client cache publication.
+ * Pins LeaseSet1 session provenance and client cache expiration.
  */
 
 #include <cassert>
@@ -93,5 +93,14 @@ int main ()
 	destination->Store (newer, session.get ());
 	assert (destination->FindLeaseSet (remote) == cached);
 	assert (!session->GetDestinationPtr ());
+
+	// Explicit expiry avoids a timer-based fixture. The retained old
+	// snapshot becomes expired without affecting a later publication.
+	cached->ExpireLease ();
+	assert (cached->IsExpired ());
+	assert (!destination->FindLeaseSet (remote));
+	destination->Store (newer, nullptr);
+	auto successor = destination->FindLeaseSet (remote);
+	assert (successor && successor != cached && !successor->IsExpired ());
 	return 0;
 }
