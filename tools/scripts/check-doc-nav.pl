@@ -19,24 +19,28 @@ my $docs   = File::Spec->catdir( $root, 'docs' );
 my $config = File::Spec->catfile( $docs, 'mkdocs.yml' );
 die "missing $config\n" unless -f $config;
 
-open my $fh, '<', $config or die "open $config: $!\n";
-my ( @nav, $in_nav );
-
 # Only the indented `- Title: page.md` values matter; the nav block ends
 # at the next top-level key. Indentation depth is ignored so nested
 # sections are covered without needing a YAML parser.
-while ( my $line = <$fh> ) {
-    $in_nav = 1 if $line =~ /^nav:\s*$/;
-    last if $in_nav && $line =~ /^\S/ && $line !~ /^nav:/;
-    next unless $in_nav;
-    my ($page) = $line =~ / : \s+ ([A-Za-z0-9_.\/-]+\.md) \s* $ /x;
-    push @nav, $page if defined $page;
+sub read_navigation {
+    my ($path) = @_;
+    open my $fh, '<', $path or die "open $path: $!\n";
+    my ( @pages, $in_nav );
+    while ( my $line = <$fh> ) {
+        $in_nav = 1 if $line =~ / ^ nav: \s* $ /x;
+        last if $in_nav && $line =~ / ^ \S /x && $line !~ / ^ nav: /x;
+        next unless $in_nav;
+        my ($page) = $line =~ / : \s+ ([A-Za-z0-9_.\/-]+\.md) \s* $ /x;
+        push @pages, $page if defined $page;
+    }
+    close $fh or die "close $path: $!\n";
+    return @pages;
 }
-close $fh;
 
+my @nav = read_navigation($config);
 my @missing;
 for my $entry (@nav) {
-    my $path = File::Spec->catfile( $docs, split m{/}, $entry );
+    my $path = File::Spec->catfile( $docs, split m{ / }x, $entry );
     push @missing, "nav target missing: $entry" unless -f $path;
 }
 
@@ -68,7 +72,7 @@ find(
     {
         no_chdir => 1,
         wanted   => sub {
-            return unless -f $_ && /\.md\z/;
+            return unless -f $_ && / \.md \z /x;
             my $rel = nav_relative($File::Find::name);
             push @unlisted, $rel unless $navigated{$rel} || $allowed{$rel};
         },
@@ -82,7 +86,7 @@ find(
         no_chdir => 1,
         wanted   => sub {
             push @html, nav_relative($File::Find::name)
-              if -f $_ && /\.(?:html?|xhtml)\z/i;
+              if -f $_ && / \. (?: html? | xhtml ) \z /ix;
         },
     },
     $docs
@@ -90,7 +94,7 @@ find(
 
 for my $asset (qw(img/logo.png img/favicon.ico)) {
     push @missing, "theme asset missing: $asset"
-      unless -f File::Spec->catfile( $docs, split m{/}, $asset );
+      unless -f File::Spec->catfile( $docs, split m{ / }x, $asset );
 }
 
 for my $problem (
