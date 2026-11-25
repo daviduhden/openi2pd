@@ -291,6 +291,15 @@ assert_contains("${debian_tui_lintian}" "i2pd-tui: possible-gpl-code-linked-with
 assert_contains("${packaging_workflow}" "grep -Eq 'static(-pie)? linked' static-file.txt"
   "static-musl verification must accept static PIE file descriptions")
 foreach(required IN ITEMS
+    "dpkg-buildpackage -us -uc -b 2>&1 | tee ../debian-build.log"
+    "../i2pd*-dbgsym_*.ddeb ../i2pd*-dbgsym_*.deb"
+    "test -s debug-symbol-output/SHA256SUMS"
+    "name: debian-debug-symbols"
+    "path: debug-symbol-output")
+  assert_contains("${packaging_workflow}" "${required}"
+    "Debian debug packaging must retain the build transcript and split debug archives")
+endforeach()
+foreach(required IN ITEMS
     "Checking that remove preserves administrator data"
     "FAIL: remove deleted /etc/i2pd/i2pd.conf"
     "install -d -o i2pd -g i2pd -m 0700 /var/lib/i2pd/netDb"

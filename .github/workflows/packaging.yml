@@ -278,8 +278,10 @@ jobs:
             libssl-dev zlib1g-dev libminiupnpc-dev libncurses-dev \
             perl openssl
       - name: Build binary packages
+        id: build_debian_packages
+        shell: bash
         run: |
-          dpkg-buildpackage -us -uc -b
+          dpkg-buildpackage -us -uc -b 2>&1 | tee ../debian-build.log
       - name: Lintian
         run: |
           set -o pipefail
@@ -382,8 +384,12 @@ jobs:
         run: |
           set -eu
           mkdir -p package-output
-          cp ../i2pd_*.deb ../i2pd-tui_*.deb ../i2pd_*.changes \
-            ../i2pd_*.buildinfo ../lintian.log package-output/ 2>/dev/null || true
+          for file in ../i2pd_*.deb ../i2pd-tui_*.deb ../i2pd_*.changes \
+            ../i2pd_*.buildinfo ../debian-build.log ../lintian.log; do
+            if [ -f "$file" ]; then
+              cp -- "$file" package-output/
+            fi
+          done
           (
             cd package-output
             set -- ./*.deb
@@ -395,11 +401,45 @@ jobs:
             fi
           )
           ls -l package-output
+      - name: Stage Debian debug symbol archives
+        if: always()
+        env:
+          BUILD_OUTCOME: ${{ steps.build_debian_packages.outcome }}
+        run: |
+          set -eu
+          for file in ../i2pd*-dbgsym_*.ddeb ../i2pd*-dbgsym_*.deb; do
+            if [ -f "$file" ]; then
+              mkdir -p debug-symbol-output
+              cp -- "$file" debug-symbol-output/
+            fi
+          done
+          if [ -d debug-symbol-output ]; then
+            (
+              cd debug-symbol-output
+              set -- ./*.ddeb ./*.deb
+              for package do
+                if [ -f "$package" ]; then
+                  sha256sum -- "$package"
+                fi
+              done > SHA256SUMS
+            )
+          fi
+          if [ "$BUILD_OUTCOME" = success ]; then
+            test -s debug-symbol-output/SHA256SUMS
+          fi
       - name: Upload Debian package evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: debian-packages-and-logs
           path: package-output
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Upload Debian debug symbol evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: debian-debug-symbols
+          path: debug-symbol-output
           if-no-files-found: warn
           retention-days: 7

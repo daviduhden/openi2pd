@@ -117,6 +117,11 @@ Ask for exact paths and package names. Do not let them run `dpkg-buildpackage`,
   contents grow. Inspect the exact package data archive before changing an
   install manifest; DEP-8 accepts plain or .gz forms of Markdown documents.
   Keep mandatory licenses and canonical compressed changelog checks exact.
+- When `debugedit` reports GNU alternate DWARF forms after `dh_dwz`, match
+  the build transcript and tool versions to the split debug-symbol archives.
+  Ubuntu emits `.ddeb` files, while Debian can emit `-dbgsym_*.deb`. Keep
+  both spellings in the evidence collector and retain their checksums
+  separately from the installable package payload.
 - Auxiliary tool pages share `man/openi2pd-tools.1`; command-named `.so`
   pages must be installed with that target in the Tools component. Keep
   Debian's explicit payload inventory aligned and inspect the exact package
