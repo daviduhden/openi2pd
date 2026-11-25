@@ -131,9 +131,14 @@ JAVA
 ( $code, $out ) = check_source($private);
 is( $code, 0, 'file descriptions and private implementation retain style' );
 
+my $ordinary_prose =
+  'Ordinary implementation prose remains an ordinary comment.';
 my $code_prose = $ordinary;
-$code_prose =~
-s/Ordinary implementation prose remains an ordinary comment\./Use {\@code value} as implementation prose./;
+ok(
+    $code_prose =~
+      s/\Q$ordinary_prose\E/Use {\@code value} as implementation prose./x,
+    'mutated ordinary comment prose to include an inline code tag'
+);
 ( $code, $out ) = check_source($code_prose);
 is( $code, 0, 'inline code prose alone does not imply API documentation' );
 
@@ -155,16 +160,21 @@ for my $tag (
   )
 {
     my $tagged = $ordinary;
-    $tagged =~
-      s/Ordinary implementation prose remains an ordinary comment\./$tag/;
+    ok(
+        $tagged =~ s/\Q$ordinary_prose\E/$tag/x,
+        "mutated ordinary comment prose to include $tag"
+    );
     ( $code, $out ) = check_source($tagged);
     is( $code, 1, "ordinary single-line comment rejects $tag" );
 }
 
-my $block_tag = $ordinary;
-$block_tag =~
-s{ /\*\ Ordinary\ implementation\ prose\ remains\ an\ ordinary\ comment\.\ \*/ }
-    {/*\n     * \@param value input\n     */}x;
+my $block_tag      = $ordinary;
+my $ordinary_block = "/* $ordinary_prose */";
+ok(
+    $block_tag =~
+      s{\Q$ordinary_block\E}{/*\n     * \@param value input\n     */}x,
+    'mutated the ordinary block to include a block tag'
+);
 ( $code, $out ) = check_source($block_tag);
 is( $code, 1, 'ordinary multiline comment rejects a block tag' );
 
