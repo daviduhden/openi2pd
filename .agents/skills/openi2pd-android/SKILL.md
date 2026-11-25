@@ -126,6 +126,11 @@ run Gradle, install an APK or run a device test.
 
 ## Known issues and decisions
 
+- Verify both Android JUnit report shapes. Gradle writes one suite per
+  file and instrumentation wraps the suites in a totals element. Check
+  counts and testcase outcomes, including at least one executed case.
+  Keep negative report fixtures beside the JVM workflow check.
+
 - Broker retirement instrumentation binds the non-exported debug fixture
   service in its own process. It inherits the production Binder and
   sandbox implementation while avoiding control replacement by the

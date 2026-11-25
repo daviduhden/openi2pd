@@ -62,6 +62,12 @@ jobs:
             ~/.gradle/caches
             ~/.gradle/wrapper
           key: android-gradle-${{ hashFiles('android/gradle/wrapper/gradle-wrapper.properties', 'android/**/*.gradle', 'android/gradle.properties') }}
+      - name: Install JUnit XML reader
+        run: |
+          if ! command -v xmllint >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install --no-install-recommends -y libxml2-utils
+          fi
       - name: Validate Android Gradle toolchain
         run: |
           sh android/tools/java25-probe/check-config.sh
@@ -163,8 +169,19 @@ jobs:
             -Pi2pd.cmakeArgs="$I2PD_ANDROID_CMAKE_ARGS"
       - name: Assert Android JVM tests actually ran
         run: |
-          test -n "$(find android/app/build/test-results/testDebugUnitTest -name '*.xml' -print -quit)"
-          ! grep -R -E '<(failure|error)' android/app/build/test-results/testDebugUnitTest
+          fixture=$(mktemp -d)
+          trap 'rm -rf "$fixture"' EXIT
+          report="$fixture/TEST-fixture.xml"
+          printf '%s\n' '<testsuite tests="1" errors="0" failures="0"><testcase/></testsuite>' > "$report"
+          sh android/tools/check-junit-reports.sh "$fixture"
+          for body in '<testcase><skipped/></testcase>' '<testcase><failure/></testcase>' ''; do
+            printf '<testsuite tests="1" errors="0" failures="0">%s</testsuite>\n' "$body" > "$report"
+            if sh android/tools/check-junit-reports.sh "$fixture"; then
+              echo "Invalid JUnit fixture accepted" >&2
+              exit 1
+            fi
+          done
+          sh android/tools/check-junit-reports.sh android/app/build/test-results/testDebugUnitTest
       - name: Assert Java 25 class-file output
         run: |
           class_file=$(find android/app/build/intermediates/javac/debug -name RouterService.class -print -quit)
@@ -516,6 +533,12 @@ jobs:
           # Reuse the matching arm64 job's Gradle cache on a UI cache miss.
           # vcpkg caches remain separate because their native triplets differ.
           restore-keys: android-gradle-${{ hashFiles('android/gradle/wrapper/gradle-wrapper.properties', 'android/**/*.gradle', 'android/gradle.properties') }}
+      - name: Install JUnit XML reader
+        run: |
+          if ! command -v xmllint >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install --no-install-recommends -y libxml2-utils
+          fi
       - name: Validate Android Gradle toolchain
         run: |
           sh android/tools/java25-probe/check-config.sh
@@ -681,10 +704,7 @@ jobs:
             -Pi2pd.abis=x86_64 \
             -Pandroid.injected.build.abi=x86_64 \
             -Pi2pd.cmakeArgs="$I2PD_ANDROID_CMAKE_ARGS"
-          results=app/build/outputs/androidTest-results/connected
-          test -n "$(find "$results" -name '*.xml' -print -quit)" \
-            || { echo "connectedDebugAndroidTest produced no XML report" >&2; exit 1; }
-          ! grep -R -E '<(failure|error)' "$results"
+          sh tools/check-junit-reports.sh app/build/outputs/androidTest-results/connected/debug
       - name: Collect emulator diagnostics on failure
         if: failure()
         timeout-minutes: 1
