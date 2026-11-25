@@ -99,6 +99,11 @@ peer or add a hidden external checkout. The reference is for reading only.
 
 ## Known issues and decisions
 
+- A LeaseSet lookup's send-drop and timeout callbacks use the same service
+  thread authority: the exact registered request and its active attempt.
+  A matching destination hash alone does not authorize work after a reply,
+  retry or cancellation. Remove terminal work before running completions.
+
 - Select and retire an expired remote LeaseSet under one cache lock.
   Keep a local owner so destruction occurs after unlocking. A near-expiry
   lookup requests refresh outside the lock; DatabaseStore owns the only

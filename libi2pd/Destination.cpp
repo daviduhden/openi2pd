@@ -862,8 +862,8 @@ namespace client
 		{
 			LogPrint (eLogInfo, "Destination: ", key.ToBase64 (), " was not found on ", MAX_NUM_FLOODFILLS_PER_REQUEST,
 				" floodfills");
-			request->Complete (nullptr);
 			m_LeaseSetRequests.erase (key);
+			request->Complete (nullptr);
 		}
 	}
 
@@ -1266,6 +1266,7 @@ namespace client
 			request->excluded.insert (nextFloodfill->GetIdentHash ());
 			request->requestedPeers.insert (nextFloodfill->GetIdentHash ());
 			request->requestTimeoutTimer.cancel ();
+			const auto attempt = ++request->attempt;
 
 			uint8_t replyKey[32];
 			uint64_t replyTag;
@@ -1284,13 +1285,17 @@ namespace client
 			auto msg = WrapMessageForRouter (nextFloodfill,
 				CreateLeaseSetDatabaseLookupMsg (dest, request->excluded, request->replyTunnel, replyKey, replyTag));
 			std::weak_ptr<LeaseSetDestination> weak = weak_from_this ();
-			msg->onDrop = [weak, dest, request] ()
+			std::weak_ptr<LeaseSetRequest> weakRequest = request;
+			msg->onDrop = [weak, dest, weakRequest, attempt] ()
 			{
 				if (auto s = weak.lock ())
 					boost::asio::post (s->GetService (),
-						[weak, dest, request] ()
+						[weak, dest, weakRequest, attempt] ()
 						{
-							if (auto self = weak.lock ()) self->SendNextLeaseSetRequest (dest, request);
+							auto self = weak.lock ();
+							auto current = weakRequest.lock ();
+							if (self && self->IsCurrentLeaseSetAttempt (dest, current, attempt))
+								self->SendNextLeaseSetRequest (dest, current);
 						});
 			};
 			request->outboundTunnel->SendTunnelDataMsgs ({ i2p::tunnel::TunnelMessageBlock {
@@ -1305,15 +1310,27 @@ namespace client
 				: request->outboundTunnel->GetNumHops () * (uint64_t)(i2p::tunnel::HIGH_LATENCY_PER_HOP) / 1000LL;
 			request->requestTimeoutTimer.expires_after (std::chrono::milliseconds (requestLeaseSetTimeout));
 			request->requestTimeoutTimer.async_wait (
-				[weak, dest] (const boost::system::error_code & ecode)
+				[weak, dest, weakRequest, attempt] (const boost::system::error_code & ecode)
 				{
 					if (ecode == boost::asio::error::operation_aborted) return;
-					if (auto self = weak.lock ()) self->HandleRequestTimeoutTimer (ecode, dest);
+					auto self = weak.lock ();
+					auto current = weakRequest.lock ();
+					if (self && self->IsCurrentLeaseSetAttempt (dest, current, attempt))
+						self->HandleRequestTimeoutTimer (ecode, dest);
 				});
 		}
 		else
 			return false;
 		return true;
+	}
+
+	bool LeaseSetDestination::IsCurrentLeaseSetAttempt (
+		const i2p::data::IdentHash & dest, const std::shared_ptr<LeaseSetRequest> & request, uint64_t attempt) const
+	{
+		// Both callbacks run on the destination service when inspecting the
+		// registry. A reused key or rearmed timer cannot authorize old work.
+		auto it = m_LeaseSetRequests.find (dest);
+		return request && it != m_LeaseSetRequests.end () && it->second == request && request->attempt == attempt;
 	}
 
 	void LeaseSetDestination::HandleRequestTimeoutTimer (
@@ -1342,7 +1359,7 @@ namespace client
 				else
 				{
 					LogPrint (eLogWarning, "Destination: ", dest.ToBase64 (), " was not found within ",
-						MAX_LEASESET_REQUEST_TIMEOUT, " seconds");
+						MAX_LEASESET_REQUEST_TIMEOUT, " milliseconds");
 					done = true;
 				}
 

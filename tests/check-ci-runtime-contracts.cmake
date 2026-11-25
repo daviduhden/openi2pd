@@ -522,6 +522,16 @@ require_runtime_order("libi2pd/Destination.cpp"
   "expired = remoteLS->IsExpired ();" "if (expired) m_RemoteLeaseSets.erase (it);"
   "\n\t\t}\n\t\tif (expired)" "RequestDestination (ident);")
 require_runtime_order("libi2pd/Destination.cpp"
+  "bool LeaseSetDestination::SendLeaseSetRequest (" "bool LeaseSetDestination::IsCurrentLeaseSetAttempt ("
+  "const auto attempt = ++request->attempt;" "std::weak_ptr<LeaseSetRequest> weakRequest = request;"
+  "msg->onDrop = [weak, dest, weakRequest, attempt]"
+  "IsCurrentLeaseSetAttempt (dest, current, attempt)" "SendNextLeaseSetRequest (dest, current);"
+  "request->requestTimeoutTimer.async_wait (" "[weak, dest, weakRequest, attempt]"
+  "IsCurrentLeaseSetAttempt (dest, current, attempt)" "HandleRequestTimeoutTimer (ecode, dest);")
+require_runtime_order("libi2pd/Destination.cpp"
+  "bool LeaseSetDestination::IsCurrentLeaseSetAttempt (" "void LeaseSetDestination::HandleRequestTimeoutTimer ("
+  "m_LeaseSetRequests.find (dest);" "it->second == request && request->attempt == attempt;")
+require_runtime_order("libi2pd/Destination.cpp"
   "const uint8_t storeType =" "auto makeLeaseSet ="
   "NETDB_STORE_TYPE_LEASESET && from" "return;" "switch (storeType)")
 

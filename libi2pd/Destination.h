@@ -199,6 +199,7 @@ namespace client
 			// an unqueried peer must not be able to redirect or abort a lookup.
 			std::unordered_set<i2p::data::IdentHash> requestedPeers, repliedPeers;
 			uint64_t requestTime;
+			uint64_t attempt = 0; // destination service only
 			boost::asio::steady_timer requestTimeoutTimer;
 			std::list<RequestComplete> requestComplete;
 			std::shared_ptr<i2p::tunnel::OutboundTunnel> outboundTunnel;
@@ -304,6 +305,8 @@ namespace client
 			std::shared_ptr<const i2p::data::RouterInfo> nextFloodfill, std::shared_ptr<LeaseSetRequest> request);
 		void SendNextLeaseSetRequest (const i2p::data::IdentHash & key, std::shared_ptr<LeaseSetRequest> request);
 		void HandleRequestTimeoutTimer (const boost::system::error_code & ecode, const i2p::data::IdentHash & dest);
+		bool IsCurrentLeaseSetAttempt (const i2p::data::IdentHash & dest,
+			const std::shared_ptr<LeaseSetRequest> & request, uint64_t attempt) const;
 		void HandleCleanupTimer (const boost::system::error_code & ecode);
 		void CleanupRemoteLeaseSets ();
 
