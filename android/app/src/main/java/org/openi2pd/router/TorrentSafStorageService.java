@@ -305,8 +305,8 @@ public final class TorrentSafStorageService extends Service {
             if (identity.retired())
                 return null;
             Control control = activeControl;
-            Operation operation = new Operation(token, owner,
-                    control != null && control.owner.equals(owner) ? control : null);
+            Operation operation = new Operation(
+                    token, owner, control != null && control.owner.equals(owner) ? control : null);
             if (admission.admit(token, owner, operation) == null)
                 return null;
             return operation;

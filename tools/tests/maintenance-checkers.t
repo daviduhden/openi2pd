@@ -748,25 +748,34 @@ qr/worker initialization diagnostic|unsupported crash debugger line|missing boun
         qr/OpenBSD failure copyback missing: upload build[.]log/,
         'OpenBSD upload diagnostic is independent of command capture'
     );
+
     for my $entry (
         [ 'Run OpenBSD non-root credential checks', 'provision_credentials' ],
-        [ 'Run OpenBSD privileged credential drop check',
-          'provision_credentials' ],
+        [
+            'Run OpenBSD privileged credential drop check',
+            'provision_credentials'
+        ],
         [ 'Build with the OpenBSD POSIX Make front end', 'build_openbsd' ]
       )
     {
         my ( $name, $dependency ) = @{$entry};
         my $candidate = $openbsd_source;
-        my $header = "      - name: $name\n";
-        my $gate = $header . '        if: ${{ !cancelled() && steps.'
-          . $dependency . ".outcome == 'success' }}\n";
+        my $header    = "      - name: $name\n";
+        my $gate =
+            $header
+          . '        if: ${{ !cancelled() && steps.'
+          . $dependency
+          . ".outcome == 'success' }}\n";
         my $changed = $candidate =~ s/\Q$gate\E/$header/;
         ok( $changed, 'OpenBSD mutation removes one independent phase gate' );
         write_file( $openbsd, $candidate );
         ( $code, $out ) = run_checker($checker);
         is( $code, 1, 'OpenBSD phase must survive a sibling failure' );
-        like( $out, qr/OpenBSD failure copyback missing: \Q$name\E/,
-            'OpenBSD phase diagnostic identifies the missing gate' );
+        like(
+            $out,
+            qr/OpenBSD failure copyback missing: \Q$name\E/,
+            'OpenBSD phase diagnostic identifies the missing gate'
+        );
     }
     my $action_run = $openbsd_source;
     my $added_run  = $action_run =~ s{(            pkg_add [^\n]+\n)}
@@ -1026,20 +1035,27 @@ s{(^[ \t]*-[ ]name:[ ]\Q$step\E\n(?:(?!^[ \t]*-[ ]name:).)*?)\Q$operand\E}{$1 . 
         );
     }
     write_file( $linux_action, $linux_source );
-    my $focused_step = 'Run I2PSnark compatibility regressions';
+    my $focused_step   = 'Run I2PSnark compatibility regressions';
     my $focused_header = "    - name: $focused_step\n";
-    my $focused_gate = $focused_header
+    my $focused_gate =
+        $focused_header
       . q{      if: ${{ !cancelled() && steps.native_build.outcome == 'success' }}}
       . "\n";
     my $blocked_focus = $linux_source;
-    ok( $blocked_focus =~ s/\Q$focused_gate\E/$focused_header/,
-        'Linux mutation removes the focused test prerequisite gate' );
+    ok(
+        $blocked_focus =~ s/\Q$focused_gate\E/$focused_header/,
+        'Linux mutation removes the focused test prerequisite gate'
+    );
     write_file( $linux_action, $blocked_focus );
     ( $code, $out ) = run_checker($checker);
     is( $code, 1, 'Linux focused tests must survive broad suite failure' );
-    like( $out, qr/independent native evidence missing: \Q$focused_step\E/,
-        'Linux prerequisite diagnostic identifies the affected phase' );
+    like(
+        $out,
+        qr/independent native evidence missing: \Q$focused_step\E/,
+        'Linux prerequisite diagnostic identifies the affected phase'
+    );
     write_file( $linux_action, $linux_source );
+
     for my $branch ( 3, 4 ) {
         my $workflow = File::Spec->catfile( $tmp, '.github', 'workflows',
             "build-linux-openssl$branch.yml" );
@@ -1204,7 +1220,8 @@ workflow_crash_fixtures($root);
     is( $code, 0, 'locale checker accepts other-only Chinese plurals' );
 
     my $bare_chinese = $valid_filters;
-    ok( $bare_chinese =~ s/zh-rCN/zh/, 'mutated the Gradle resource qualifier' );
+    ok( $bare_chinese =~ s/zh-rCN/zh/,
+        'mutated the Gradle resource qualifier' );
     write_file( $gradle, $bare_chinese );
     ( $code, $out ) = run_checker( $locale_checker, '--root', $android );
     is( $code, 1, 'locale checker rejects the bare Chinese filter' );
