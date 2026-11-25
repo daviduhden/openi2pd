@@ -513,6 +513,9 @@ jobs:
             ~/.gradle/caches
             ~/.gradle/wrapper
           key: android-ui-gradle-${{ hashFiles('android/gradle/wrapper/gradle-wrapper.properties', 'android/**/*.gradle', 'android/gradle.properties') }}
+          # Reuse the matching arm64 job's Gradle cache on a UI cache miss.
+          # vcpkg caches remain separate because their native triplets differ.
+          restore-keys: android-gradle-${{ hashFiles('android/gradle/wrapper/gradle-wrapper.properties', 'android/**/*.gradle', 'android/gradle.properties') }}
       - name: Validate Android Gradle toolchain
         run: |
           sh android/tools/java25-probe/check-config.sh
