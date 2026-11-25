@@ -260,13 +260,6 @@ and
 in I2P base64.
 Share only the public key.
 Do not capture the private key in logs or support reports.
-.Sh EXIT STATUS
-Zero indicates success.
-Nonzero indicates an invalid invocation, rejected input, unsupported
-algorithm, crypto-provider failure or file operation failure.
-Specific nonzero values differ between commands; scripts must preserve
-the
-status of the selected command.
 .Sh FILES
 .Bl -tag -width Ds
 .It Pa /usr/share/doc/i2pd/docs/tools/
@@ -274,7 +267,14 @@ Per-command references, formats, examples and security notes.
 The documentation directory may be omitted by an optional-documentation
 build configuration; these manual pages belong to the Tools component.
 .El
+.Sh EXIT STATUS
+Zero indicates success.
+Nonzero indicates an invalid invocation, rejected input, unsupported
+algorithm, crypto-provider failure or file operation failure.
+Specific nonzero values differ between commands; scripts must preserve
+the
+status of the selected command.
 .Sh SEE ALSO
 .Xr i2pd 1 ,
-.Xr i2pdctl 1 ,
-.Xr i2pd-tui 1
+.Xr i2pd-tui 1 ,
+.Xr i2pdctl 1

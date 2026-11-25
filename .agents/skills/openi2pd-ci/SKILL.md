@@ -829,3 +829,8 @@ group the affected jobs by the failing guard. Compare literal fixture
 operands with the guard before modifying compiler settings. In a
 multi-child startup diagnostic, record each child's own result and
 distinguish the debugger's initial breakpoint from a product trap.
+
+When a documentation job compiles several manual pages serially, inspect
+its uploaded build transcript for the exact staged page and diagnostics.
+Track renderer, help compiler and archive verification separately until
+the job reaches each stage.
