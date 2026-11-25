@@ -111,6 +111,11 @@ build.
 
 ## Known issues and decisions
 
+- Gate the OpenSSL branch action's full and focused CTest, version,
+  label and Perl checks on the native build outcome. A broad CTest
+  failure must remain fatal while still producing the independent
+  test evidence for successfully built targets.
+
 When adding a selected Windows regression, update the CMake registration,
 security-memory classification, MSVC build list, closed literal filter
 parser and fixture, and uploaded executable inventory together. Distinguish

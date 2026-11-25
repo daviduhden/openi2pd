@@ -166,10 +166,10 @@ for my $file (@files) {
           if defined $prepare && $prepare =~ /^          run:/m;
         for my $required (
             'shell: openbsd {0}',
+            'id: build_openbsd',
             'run: |',
             'set -eu',
             'cmake --build build-output',
-            'ctest --test-dir build-output',
             'build_status=$?',
             'exit "$build_status"'
           )
@@ -329,10 +329,25 @@ for my $path ( sort @action_files ) {
 /$command[^\n]*2>&1\s*\|\s*tee\s+(?:"?\$PWD\/)?\Q$name\E[.]log"?(?:\s|$)/;
         }
         my ($build_block) = $active =~
-/(^[ \t]*-[ ]name:[ ]Build and run all CTest targets\n.*?)(?=^[ \t]*-[ ]name:|\z)/ms;
+/(^[ \t]*-[ ]name:[ ]Configure and build native targets\n.*?)(?=^[ \t]*-[ ]name:|\z)/ms;
         push @errors,
           "$path: build evidence missing: pipeline failure propagation"
-          unless defined $build_block && $build_block =~ /set -euo pipefail/;
+          unless defined $build_block && $build_block =~ /set -euo pipefail/
+          && $build_block =~ /^      id: native_build$/m;
+        for my $name (
+            'Run all CTest targets', 'Run I2PSnark compatibility regressions',
+            'Run client parsing and persistence regressions',
+            'Run profile, Android lifecycle and firewall regressions',
+            'Verify CTest subsystem labels',
+            'Validate Perl and static interoperability fixtures'
+          )
+        {
+            my ($step) = $active =~
+/(^    - name: \Q$name\E\n.*?)(?=^    - name:|\z)/ms;
+            my $gate = q{if: ${{ !cancelled() && steps.native_build.outcome == 'success' }}};
+            push @errors, "$path: independent native evidence missing: $name"
+              unless defined $step && index( $step, $gate ) >= 0;
+        }
         my ($upload_block) = $active =~
 /(^[ \t]*-[ ]name:[^\n]*\n(?:(?!^[ \t]*-[ ]name:).)*?uses:[ ]actions\/upload-artifact[^\n]*\n(?:(?!^[ \t]*-[ ]name:).)*)/ms;
         for my $required (

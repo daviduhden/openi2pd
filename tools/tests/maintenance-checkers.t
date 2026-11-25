@@ -1026,6 +1026,20 @@ s{(^[ \t]*-[ ]name:[ ]\Q$step\E\n(?:(?!^[ \t]*-[ ]name:).)*?)\Q$operand\E}{$1 . 
         );
     }
     write_file( $linux_action, $linux_source );
+    my $focused_step = 'Run I2PSnark compatibility regressions';
+    my $focused_header = "    - name: $focused_step\n";
+    my $focused_gate = $focused_header
+      . q{      if: ${{ !cancelled() && steps.native_build.outcome == 'success' }}}
+      . "\n";
+    my $blocked_focus = $linux_source;
+    ok( $blocked_focus =~ s/\Q$focused_gate\E/$focused_header/,
+        'Linux mutation removes the focused test prerequisite gate' );
+    write_file( $linux_action, $blocked_focus );
+    ( $code, $out ) = run_checker($checker);
+    is( $code, 1, 'Linux focused tests must survive broad suite failure' );
+    like( $out, qr/independent native evidence missing: \Q$focused_step\E/,
+        'Linux prerequisite diagnostic identifies the affected phase' );
+    write_file( $linux_action, $linux_source );
     for my $branch ( 3, 4 ) {
         my $workflow = File::Spec->catfile( $tmp, '.github', 'workflows',
             "build-linux-openssl$branch.yml" );
