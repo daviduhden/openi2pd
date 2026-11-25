@@ -2027,3 +2027,70 @@ mutation success observable and keeps interop fixture refusal and redaction
 semantics. Three corrected files pass focused Perl::Critic with the repo
 profile. The full profile remains open.
 [Perl quality job](https://github.com/daviduhden/openi2pd/actions/runs/45662813101/job/139376889569)
+
+## 58652c91 manual batch
+
+All ten full logs were available for
+`58652c9132c0dbf2f0dfade67c7b4e7e1bf4a084`. These runs predate the
+local Perl lint and Windows Help changes.
+
+| Workflow | Result |
+|---|---|
+| [Linux](https://github.com/daviduhden/openi2pd/actions/runs/45671625956) | Distribution GCC and Clang each passed 279 tests. |
+| [Linux OpenSSL 3.x](https://github.com/daviduhden/openi2pd/actions/runs/45671625860) | GCC and Clang passed. |
+| [Linux OpenSSL 4.x](https://github.com/daviduhden/openi2pd/actions/runs/45671625980) | GCC and Clang passed. |
+| [OpenBSD](https://github.com/daviduhden/openi2pd/actions/runs/45671625792) | 274 selected, with three skips. Separate credential fixtures passed. OpenBSD torrent storage stayed skipped. |
+| [Windows](https://github.com/daviduhden/openi2pd/actions/runs/45671625807) | MSYS2 passed with the expected AF_UNIX skip. MSVC passed 35 of 36. RT-087 remains open. |
+| [Android](https://github.com/daviduhden/openi2pd/actions/runs/45671626049) | Arm64 passed. API 29 instrumentation failed. Signing skipped by input. |
+| [Validation](https://github.com/daviduhden/openi2pd/actions/runs/45671625751) | Each sanitizer selection passed 279 tests. Fuzz smoke passed 15. Documentation and skills passed. Perl::Critic failed after Test::More passed. |
+| [Instrumented OpenSSL TSan](https://github.com/daviduhden/openi2pd/actions/runs/45671625994) | Passed. |
+| [Packaging](https://github.com/daviduhden/openi2pd/actions/runs/45671625988) | Passed. |
+| [Agent Knowledge Validation](https://github.com/daviduhden/openi2pd/actions/runs/45671625983) | Passed. |
+
+**TF-586-01.** Job 139408138617 failed
+`TorrentSafBrokerContractTest.reboundBrokerAnswersTheWholeTypedSurface`
+at line 261 with `Broker ignored its own retirement`. Exact XML is in
+artifact 15050342389. Its sibling retirement test passed in the same run.
+[API 29 job](https://github.com/daviduhden/openi2pd/actions/runs/45671626049/job/139408138617)
+
+**TF-586-02.** Job 139408137059 passed 1585 Test::More assertions in eight
+files and then emitted 791 Perl::Critic findings with exit 2. The
+preexisting local cleanup passed the full repository lint profile.
+Manual CI for the corrected revision remains pending.
+[Perl quality job](https://github.com/daviduhden/openi2pd/actions/runs/45671625751/job/139408137059)
+
+### Historical inventory coverage
+
+Paginated metadata included 705 runs across 97 SHAs from October 17
+through November 25, 2026 (291 successes, 345 failures, 69 cancellations).
+All ten logs of the current batch were inspected, alongside cancellation
+samples and targeted artifacts. Older metadata does not provide evidence
+that its jobs executed or that their logs remain available.
+
+The [cancelled Android run](https://github.com/daviduhden/openi2pd/actions/runs/44949202610)
+on `076ddcb7` retained an arm64 success and a cancelled API 29 job.
+The [historical cancelled Windows run](https://github.com/daviduhden/openi2pd/actions/runs/39057882152)
+on `2146ee12` retained nine successful siblings and a cancelled legacy
+XP job from a different matrix.
+
+### Prepared runtime controls
+
+- TF-586-01 now binds the real SAF broker implementation in a separate,
+  non-exported debug fixture process. This isolates the test's control
+  endpoint from RouterService's asynchronous client, while keeping the
+  stale-control refusal, positive retirement and real rebind assertions.
+  Teardown waits for death after the fixture's last unbind. The deadline
+  is unchanged and the inferred competing-publication cause remains
+  unconfirmed. Pending API 29 CI.
+- RT-087 now has an authority-free comparison of `CREATE_NO_WINDOW`
+  and `DETACHED_PROCESS` under the same restricted launcher and
+  collection deadline. The baseline remains authoritative. Pending MSVC CI.
+
+The reviewed CTest output had no failed torrent or storage result in the
+selected lanes. `test-torrent-storage-openbsd` skipped, so this batch
+supplies no execution evidence for OpenBSD payload storage. The MSVC
+focused selection also omits the full storage suite.
+The exact OpenBSD JUnit/CTest artifact 15050754392 records
+`storage workers refuse a root runner`. Source review also identifies
+the later unconditional skip for the unimplemented exec-free provisioning,
+so switching the fixture account alone would not establish broker coverage.

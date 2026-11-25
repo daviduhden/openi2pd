@@ -9102,3 +9102,53 @@ Perl::Critic review after separating token recognition and localizing
 child environment construction. Under the same local severity-3 profile,
 findings decreased from 808 to 791. Regression execution remains
 Pending CI tests.
+
+## Internal source documentation review
+
+Reviewed native protocols, platform boundaries, Android, the wrapper,
+localization, build and manual CI, and maintenance and test tooling.
+Updated comments at the boundaries that own resources, interpret inputs,
+or classify evidence. No executable statement or configuration value was
+changed. Source comment checks passed. Generated Doxygen and Android Javadoc
+validation remain Pending CI tests.
+
+## Shell and Perl lint continuation
+
+Ran clang-format, ShellCheck and the Shell/Perl validation wrappers against
+the maintained sources. The C++, Java and Shell formatting pass required no
+changes. The Perl pass preserves literal regex operands and capture order,
+and splits scanner and fixture logic by policy. Perl::Critic findings under
+the checked-in profile dropped from 791 to zero across 30 tracked files,
+including the extensionless `i2pdctl`. Regression suites remain Pending CI
+tests.
+
+## Windows compiled manual
+
+DOC-WIN-001 is Implemented / static. The standalone CMake target discovers
+the 19 canonical manual entries and prepares a verified CHM for the Windows
+ZIPs, installer and manual CI artifact. The Windows job prepares source
+validation, an unresolved-reference negative control, archive verification
+and install hash comparison. The actual CHM, release packages and Windows
+10/11 viewer walkthrough remain Pending CI tests or desktop validation.
+
+## 58652c91 CI audit
+
+Reviewed all ten exact-run logs, successful siblings, cancellation
+samples and exact artifacts against the current tree. The six CI
+inventories distinguish stale published lint findings, Android API 29
+retirement, MSVC loader startup and successful sanitizer/fuzz selections.
+Strict Windows and OpenBSD warning inputs are Implemented / static,
+Pending CI tests.
+
+Prepared a debug-only isolated Android broker fixture and a closed MSVC
+console-mode comparison. Both preserve the production security boundary
+and original failure criteria. The fixture and comparison remain Pending
+CI tests. The worktree Perl profile passed for 31 inputs including the
+new CHM generator.
+
+The follow-up formatting and lint pass formatted the Android SAF
+fixture and its client test. ShellCheck with OpenBSD's real rc.subr in
+scope found one unused pidfile assignment. The service now uses that
+value in its daemon arguments, preserving the rendered path. The
+service source contract follows the same single assignment. The
+31-file Perl::Critic profile remained clean. Manual CI remains pending.

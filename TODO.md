@@ -3015,3 +3015,16 @@ archives and compare their size after the next package build.
 
 LeaseSet timeout and drop callback authority (RT-AA78-01) is
 Implemented / static, Pending CI compilation and Pending CI tests.
+
+## Windows manual distribution
+
+| ID | State | Remaining work |
+|---|---|---|
+| DOC-WIN-001 | Implemented / static | Pending CI tests for CHM generation, rejection controls and Windows packaging. Confirm viewer navigation, keyword index and full-text search on Windows 10 and 11. |
+
+## 58652c91 manual CI follow-up
+
+| ID | State | Remaining work |
+|---|---|---|
+| CI-586-01 | Implemented / static | Pending CI tests for opt-in strict Windows and OpenBSD builds and the local Perl profile cleanup. |
+| CI-586-02 | In progress | Resolve TF-586-01 / RT-586-01 Android retirement and RT-087 MSVC setup using exact evidence. |

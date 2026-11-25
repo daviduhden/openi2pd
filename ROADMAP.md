@@ -2778,3 +2778,18 @@ archives and compare their size after the next package build.
 
 LeaseSet timeout and drop callback authority (RT-AA78-01) is
 Implemented / static, Pending CI compilation and Pending CI tests.
+
+## Windows manual distribution
+
+DOC-WIN-001 generates the Windows Help file from the same manual sources
+shipped on Unix. The next validation milestone is the manual Windows CI
+generation and packaging job, followed by viewer checks on Windows 10 and
+Windows 11.
+
+## 58652c91 evidence follow-up
+
+The manual validation milestone covers strict Windows and OpenBSD warning
+runs, the full Perl profile, API 29 Binder retirement and the remaining MSVC
+worker startup failure. Shared desktop libraries require a separate design
+because the native archives are declared explicitly static. Shared Android
+JNI has its own existing lanes.

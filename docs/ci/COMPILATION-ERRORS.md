@@ -2576,3 +2576,24 @@ a build or link failure.
 
 The distribution-floor provider was system OpenSSL 3.0.13. Rolling
 Linux used OpenSSL 3.5.9 and 4.1.0. OpenBSD used LibreSSL 4.4.0.
+
+## 58652c91 compilation and linking
+
+The [exact batch](TEST-FAILURES.md#58652c91-manual-batch) compiled through
+the native, Android and sanitizer test selections. The failed jobs
+reported Windows worker initialization, Android connected
+instrumentation and Perl lint. No new first-party compiler or linker
+error was identified in the ten full logs. The local CHM target is absent
+from this revision and remains pending manual CI.
+
+| Lane | Compiler and cryptographic backend observed |
+|---|---|
+| Linux distribution floor | GCC 13.3.0 and Clang 17.0.6, OpenSSL 3.0.13 |
+| Linux rolling packages | GCC 16.2.0 and Clang 23.1.6, OpenSSL 3.5.9 and 4.1.0 |
+| Native Windows | MSVC 19.44.35230.0 with OpenSSL 3.6.5, and MSYS2 Clang 23.1.5 with OpenSSL 4.1.0 |
+| OpenBSD 8.0 | Clang 22.1.6 and LibreSSL 4.4.0 |
+| Android arm64 and x86_64 | NDK Clang 21.0.0 and OpenSSL 3.6.5 |
+| Validation | Clang 23.1.6 and OpenSSL 4.1.0 |
+
+The rolling OpenSSL 4.x runs supply 4.1.0 evidence. The exact 4.0.x
+compatibility floor remains without a current lane.

@@ -668,3 +668,10 @@ before running the checker, including mutations expected to be accepted.
 Capture a subprocess wait status immediately after closing the pipe.
 A shift alone can discard the signal bits that make a run fail.
 [TF-AA78-01](TEST-FAILURES.md#aa78fa46-manual-batch)
+
+## Treat build variant diagnostics as variant-specific
+
+When Android release lint reports a missing ABI, compare the packaged ABI
+filters with any emulator-only overrides. An x86_64 device job does not
+alter the ABI contents of the arm64 release artifact. Keep native compiler
+warnings, release compatibility lint and dependency deprecations separate.

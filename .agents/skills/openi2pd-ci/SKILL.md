@@ -817,3 +817,9 @@ When API 29 Gradle dependency resolution receives HTTP 429, compare
 the job's cache keys and actual hits before changing the workflow.
 The UI job can restore the arm64 Gradle cache for the same dependency
 inputs, while native vcpkg caches keep distinct triplet keys.
+
+For Android, compare release ABI selection against the separately
+configured emulator build before classifying ABI lint. For Windows
+loader snaps, retain the exact DLL attach line and image identity.
+A nearby child-process exit supplies a comparison variable, not causal
+evidence. Record strict-warning input values when reviewing a lane.

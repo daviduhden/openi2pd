@@ -3333,3 +3333,21 @@ its edit even when its expected outcome is acceptance.
 A queued LeaseSet timer or drop completion needs both current request
 identity and current send attempt. Removing the lookup key alone does
 not invalidate an already queued callback on a reused key.
+
+## Windows manual distribution
+
+Keep the roff pages under `man/` canonical. Windows release ZIPs and the
+installer consume the verified `openi2pd.chm` from the standalone
+`windows-manual` target. The generated topic files, stylesheet, contents and
+index stay in the build directory. The Windows documentation job is manual.
+Review aliases, section metadata, offline references and packaging consumers
+when adding a page. Generated HTML Help does not add a browser console or a
+runtime web asset.
+Keep the negative roff fixture in a PowerShell array. The existing crash
+command checker reserves the first here-string for debugger commands.
+
+For Binder retirement failures, compare the failing generation and process
+against adjacent tests before changing a deadline. A later success on the
+same process separates an earlier retirement admission or delivery failure
+from slow Binder death notification. Trace other same-process publishers
+of control endpoints during a rebind.

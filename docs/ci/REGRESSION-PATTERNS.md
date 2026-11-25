@@ -1079,3 +1079,11 @@ reused, and a retry can rearm the timer for the same request. Guard queued
 LeaseSet timeout and drop callbacks on the service thread with both the
 live request identity and the send attempt. Release completed ownership
 before invoking external completion. Pending CI tests.
+
+## Retain fixture authority through asynchronous retirement
+
+A one-way retirement call has separate submission, admission and process
+death phases. Review endpoint ownership and revocation across all
+consumers. Use the exact test XML and its sibling outcomes before
+classifying a timeout. Preserve the existing deadline while investigating.
+[TF-586-01](TEST-FAILURES.md#58652c91-manual-batch)

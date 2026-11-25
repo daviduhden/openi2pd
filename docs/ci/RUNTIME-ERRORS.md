@@ -3228,3 +3228,24 @@ now verify the weak request identity and attempt under the destination
 executor. The timeout message reports the configured milliseconds.
 This correction was prepared through source review and remains pending
 CI compilation and tests.
+
+## 58652c91 runtime follow-up
+
+**RT-087 recurrence.** MSVC job 139408136555 reports a worker exit
+`3221225794` before pipe authentication. The authority-free debugger
+probe records the same exit. The exit is corroborated and causation
+remains open.
+[MSVC job](https://github.com/daviduhden/openi2pd/actions/runs/45671625807/job/139408136555)
+
+**RT-586-01.** The API 29 retirement assertion is tracked in TF-586-01.
+A passing sibling proves some retirement requests completed in the
+same run. Keep process death observation distinct from acceptance
+and delivery of the one-way Binder request.
+
+The exact loader-snap artifact identifies the DLL attach routine as
+`KERNELBASE.dll` (10.0.20348.5866, PDB
+`0792E1E7A24BB52249313BF74137D2B11`). Probe image SHA-256 is
+`4AE2ED2F1E798639D0EAB81FDD3506CEEA5ADE06BD0FAB93946CDB4079926D12`.
+The trace also records a nested conhost exit `0xc0000022`. This identifies
+a lead for an authority-free comparison of console creation modes. The
+trace does not establish why the initializer failed.

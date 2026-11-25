@@ -1432,3 +1432,18 @@ diagnostic. Losing cross-image deduplication can increase archive size.
 Pending CI tests.
 [Debhelper dh_dwz manual](https://manpages.debian.org/bookworm/debhelper/dh_dwz.1.en.html)
 [GNU DWARF alternate forms](https://sourceware.org/elfutils/DwarfExtensions)
+
+## 58652c91 warning follow-up
+
+**CW-586-01.** The successful arm64 Android job repeats
+`ChromeOsAbiSupport` at `android/app/build.gradle:88` and `:108`.
+This reports the arm64 publication ABI selection. The separate x86_64
+emulator build does not give the published APK x86_64 coverage. The AGP
+built-in Kotlin opt-out and protobuf-java 3.25.5 Unsafe notices remain
+toolchain diagnostics. No warning suppression was added.
+[Android arm64 job](https://github.com/daviduhden/openi2pd/actions/runs/45671626049/job/139408138095)
+
+**CW-586-02.** Successful Linux jobs report the runner's Landlock ABI 8
+and partial network restrictions. OpenBSD logs SSH host enrollment and
+MSYS2 reports package-manager process shutdown. These identify runner
+capabilities or tooling, separately from first-party compiler warnings.
