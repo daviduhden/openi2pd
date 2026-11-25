@@ -136,7 +136,10 @@ worker exit; retain both without removing containment to change results.
   module identity. A local-only symbol path may resolve nearest exports,
   which cannot identify the failing initializer. CREATE_NO_WINDOW and a
   correlated conhost failure are independent observations, not proof of a
-  startup correction. Keep diagnostic network lookups deadline-bounded.
+  startup correction. Match both exit records before selecting the console
+  mode. Detached workers still require three usable NUL handles and the
+  live worker must complete its authenticated handshake in CI. Keep
+  diagnostic network lookups deadline-bounded.
 
 - A suspended child exists before fallback Job assignment. Closing process
   handles is not termination: guard the entire post-CreateProcess interval,

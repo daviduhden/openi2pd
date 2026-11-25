@@ -126,8 +126,8 @@ limit caused a failed allocation.
 The supervisor test image has two exact diagnostic entries:
 
 - `--diagnose-worker-initialization` compares two contained launches of the
-  same fixture image. The baseline uses `CREATE_NO_WINDOW`; the comparison
-  uses `DETACHED_PROCESS`. They share a 15-second observation deadline,
+  same fixture image. The baseline uses `DETACHED_PROCESS`; the comparison
+  uses `CREATE_NO_WINDOW`. They share a 15-second observation deadline,
   with up to two further seconds for forced termination after timeout.
   Process creation itself is a synchronous Windows API; the enclosing
   manual CI debugger also needs an outer deadline.
@@ -140,7 +140,7 @@ default supervisor policy as the live fixture: restricted token, Job limits,
 mitigations and the three-handle NUL allowlist. Its interface accepts the
 fixture executable and a closed console-mode selector. The diagnostic
 records each PID for matching debugger events and preserves the baseline
-exit result even when the detached comparison succeeds. The comparison
+exit result independently of the no-window comparison. The comparison
 varies the console flag only; worker parsing, flags and authentication
 remain in their existing path.
 
@@ -232,7 +232,7 @@ worker. Those require a dedicated Windows host and the manual workflow.
 - `ncalrpc` remains an evaluated alternative, not a second protocol
   implementation. No undocumented ALPC API is used.
 - `SpawnWindowsWorker` still inherits the parent environment and current
-  directory; `CREATE_NO_WINDOW` and NUL std handles are set, but a minimal
+  directory; `DETACHED_PROCESS` and NUL std handles are set, but a minimal
   environment block and explicit install-directory CWD remain pending.
 - The Windows `--privsep-worker` entry point and `WindowsWorkerSupervisor` exist,
   but no daemon path starts a Windows worker yet, so production wiring remains

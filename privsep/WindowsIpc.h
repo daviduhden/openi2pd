@@ -330,7 +330,7 @@ i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorker (const std::
 enum class WindowsStartupProbeConsole
 {
 	WorkerDefault,
-	Detached
+	NoWindow
 };
 
 /** Spawn a nonsecret diagnostic child under the supervisor policy.
@@ -340,7 +340,7 @@ enum class WindowsStartupProbeConsole
  * implementing that flag and retain the returned process/job until exit
  * or bounded termination. The production worker grammar is unchanged.
  * Token, Job memory/process limits, mitigations and NUL handle transfer
- * match SpawnWindowsWorker with the default supervisor policy. Detached
+ * match SpawnWindowsWorker with the default supervisor policy. NoWindow
  * varies only the console creation flag for this diagnostic.
  */
 i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorkerStartupProbe (

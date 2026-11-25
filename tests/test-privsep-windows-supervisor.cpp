@@ -107,7 +107,7 @@ int RunWorkerInitializationProbe (
 	const std::wstring & executable, WindowsStartupProbeConsole console, Clock::time_point deadline)
 {
 	const char * label
-		= console == WindowsStartupProbeConsole::Detached ? "startup comparison detached" : "startup probe";
+		= console == WindowsStartupProbeConsole::NoWindow ? "startup comparison no-window" : "startup probe";
 	if (Clock::now () >= deadline)
 	{
 		std::printf ("%s: comparison budget exhausted\n", label);
@@ -151,14 +151,14 @@ int RunWorkerInitializationProbe (
 }
 
 // Both children are authority-free. Keep the baseline result even when
-// the detached comparison reaches main successfully.
+// the no-window comparison reports a different loader outcome.
 int DiagnoseWorkerInitialization ()
 {
 	const auto executable = SelfExecutable ();
 	if (executable.empty ()) return 1;
 	const auto deadline = Clock::now () + std::chrono::seconds (15);
 	const int baseline = RunWorkerInitializationProbe (executable, WindowsStartupProbeConsole::WorkerDefault, deadline);
-	(void)RunWorkerInitializationProbe (executable, WindowsStartupProbeConsole::Detached, deadline);
+	(void)RunWorkerInitializationProbe (executable, WindowsStartupProbeConsole::NoWindow, deadline);
 	return baseline;
 }
 

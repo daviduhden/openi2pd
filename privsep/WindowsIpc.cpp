@@ -1639,7 +1639,7 @@ namespace
 	{
 		Worker,
 		StartupProbe,
-		StartupProbeDetached
+		StartupProbeNoWindow
 	};
 
 	// The probe changes only the fixed command grammar, not containment.
@@ -1942,8 +1942,8 @@ namespace
 			// together.
 			startup.StartupInfo.cb = static_cast<DWORD> (extended ? sizeof (startup) : sizeof (STARTUPINFOW));
 			startup.lpAttributeList = attributes.list;
-			const bool detachedProbe = mode == WindowsSpawnMode::StartupProbeDetached;
-			const DWORD consoleFlag = detachedProbe ? DETACHED_PROCESS : CREATE_NO_WINDOW;
+			const bool noWindowProbe = mode == WindowsSpawnMode::StartupProbeNoWindow;
+			const DWORD consoleFlag = noWindowProbe ? CREATE_NO_WINDOW : DETACHED_PROCESS;
 			const DWORD creationFlags = consoleFlag | CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT
 				| (extended ? EXTENDED_STARTUPINFO_PRESENT : 0u);
 			if (useContainer)
@@ -2014,8 +2014,8 @@ i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorker (const std::
 i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorkerStartupProbe (
 	const std::wstring & executable, WindowsStartupProbeConsole console)
 {
-	const bool detached = console == WindowsStartupProbeConsole::Detached;
-	const auto mode = detached ? WindowsSpawnMode::StartupProbeDetached : WindowsSpawnMode::StartupProbe;
+	const bool noWindow = console == WindowsStartupProbeConsole::NoWindow;
+	const auto mode = noWindow ? WindowsSpawnMode::StartupProbeNoWindow : WindowsSpawnMode::StartupProbe;
 	return SpawnContainedWindowsProcess (mode, executable, WindowsWorkerRole::Supervisor, { }, 0, 0, { }, nullptr,
 		GetWindowsWorkerPolicy (WindowsWorkerRole::Supervisor));
 }

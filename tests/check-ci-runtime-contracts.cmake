@@ -974,23 +974,23 @@ require_runtime_source("privsep/Channel.cpp"
 
 # A nonsecret probe shares containment, never authentication authority.
 require_runtime_source("privsep/WindowsIpc.cpp"
-  "enum class WindowsSpawnMode\n\t{\n\t\tWorker,\n\t\tStartupProbe,\n\t\tStartupProbeDetached\n\t};")
+  "enum class WindowsSpawnMode\n\t{\n\t\tWorker,\n\t\tStartupProbe,\n\t\tStartupProbeNoWindow\n\t};")
 require_runtime_source("privsep/WindowsIpc.cpp"
   "return i2p::unexpected (\"invalid startup probe authority\");")
 require_runtime_source("privsep/WindowsIpc.cpp"
-  "const bool detachedProbe = mode == WindowsSpawnMode::StartupProbeDetached;\n\t\t\tconst DWORD consoleFlag = detachedProbe ? DETACHED_PROCESS : CREATE_NO_WINDOW;")
+  "const bool noWindowProbe = mode == WindowsSpawnMode::StartupProbeNoWindow;\n\t\t\tconst DWORD consoleFlag = noWindowProbe ? CREATE_NO_WINDOW : DETACHED_PROCESS;")
 require_runtime_order("privsep/WindowsIpc.cpp"
   "SpawnWindowsWorker (" "SpawnWindowsWorkerStartupProbe ("
   "SpawnContainedWindowsProcess (WindowsSpawnMode::Worker,")
 require_runtime_order("privsep/WindowsIpc.cpp"
   "SpawnWindowsWorkerStartupProbe (" "bool WindowsWorkerProcess::Wait ("
-  "WindowsSpawnMode::StartupProbeDetached : WindowsSpawnMode::StartupProbe"
+  "WindowsSpawnMode::StartupProbeNoWindow : WindowsSpawnMode::StartupProbe"
   "WindowsWorkerRole::Supervisor, { }, 0, 0, { }, nullptr,"
   "GetWindowsWorkerPolicy (WindowsWorkerRole::Supervisor)")
 require_runtime_order("tests/test-privsep-windows-supervisor.cpp"
   "int DiagnoseWorkerInitialization ()" "std::string SystemErrorText ("
   "const auto deadline =" "WindowsStartupProbeConsole::WorkerDefault, deadline"
-  "WindowsStartupProbeConsole::Detached, deadline" "return baseline;")
+  "WindowsStartupProbeConsole::NoWindow, deadline" "return baseline;")
 require_runtime_order("tests/test-privsep-windows-supervisor.cpp"
   "int main (int argc, char ** argv)" "for (int index = 1; index < argc; ++index)"
   "--diagnose-worker-initialization" "return argc == 2 ? DiagnoseWorkerInitialization () : 2;"

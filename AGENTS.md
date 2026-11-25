@@ -2105,7 +2105,7 @@ container role without a container, a container for a non-container role, or a
 persistent-write role without a delegated root must fail closed; never fall
 back silently to a restricted token.
 
-Spawn uses a suspended process with `CREATE_NO_WINDOW` and delegates only
+Spawn uses a suspended process with `DETACHED_PROCESS` and delegates only
 three inheritable NUL standard handles via the explicit handle list. This
 uses `bInheritHandles=TRUE` with the allowlist. Spawn also uses a computed attribute
 count, `PROC_THREAD_ATTRIBUTE_JOB_LIST` with a suspended fallback,
@@ -3357,3 +3357,7 @@ guard that consumes the fixture. Store the expected diagnostic in a
 literal operand and interpolate it as quoted text. For a last-unbind
 test, own a Binder death registration independently of the service
 connection and release it after observing the exact broker generation.
+
+When a closed startup comparison isolates a launch flag, retain the
+job, token and handle policies in the production fix. Verify the full
+worker handshake and shutdown independently of the probe exit.
