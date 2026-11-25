@@ -3193,3 +3193,38 @@ The lookup now erases the selected iterator while holding the lock,
 and refresh leaves the result to DatabaseStore publication. The
 existing `test-destination-leaseset-session` and source-order
 contract cover the local correction. Pending CI tests.
+
+## aa78fa46 runtime follow-up
+
+RT-087 again failed before MSVC worker authentication in job
+139376895504. Both the live worker and the authority-free diagnostic
+child returned 3221225794 (0xC0000142). The exact Windows evidence is
+artifact 15048138549. The repeated process startup failure remains open.
+[MSVC job](https://github.com/daviduhden/openi2pd/actions/runs/45662813055/job/139376895504)
+
+The Android API 29 XML records six broker and four JNI metadata passes.
+RT-486-01's retirement/death/rebind checks passed on the updated revision.
+A local preventive review found that the interrupted caller path did
+not send the advisory cancellation used on timeout. Both paths now
+use the existing operation-scoped control authority. The new source
+contract is pending CI. Positive active-provider cancellation across
+processes remains open.
+[Android job](https://github.com/daviduhden/openi2pd/actions/runs/45662813093/job/139376892352)
+
+The ASan+UBSan, UBSan, TSan and provider TSan suites passed without
+matching sanitizer diagnostics in the reviewed logs. ASan enabled leak
+detection, while bounded fuzz smoke did not.
+
+The closed MSVC probe image hash is
+`BECA319861B56AE4B4165D0EB96596EF9D35F52C248AB77EA4BCB1A23B48308C`.
+Its matched KERNELBASE PDB is `0792E1E7A24BB52249313BF74137D2B11`.
+The initializer fails at RVA 0x1b170, matching the earlier reports.
+The separate process exit still does not establish causation.
+
+**RT-AA78-01.** Preventive review found that a queued LeaseSet timeout
+could address the same key after replacement. The drop callback also
+did not distinguish a previous send from a rearmed attempt. Both paths
+now verify the weak request identity and attempt under the destination
+executor. The timeout message reports the configured milliseconds.
+This correction was prepared through source review and remains pending
+CI compilation and tests.

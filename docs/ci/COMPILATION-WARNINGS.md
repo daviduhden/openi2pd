@@ -1406,3 +1406,29 @@ checksums separately. Successful builds require nonempty debug evidence.
 The compatibility of the packaged debug information remains pending.
 [Debian workflow run](https://github.com/daviduhden/openi2pd/actions/runs/45654904135)
 [DWZ alternate debug formats](https://sourceware.org/elfutils/DwarfExtensions)
+
+## aa78fa46 warning review
+
+The published native build logs carry no new matching first-party
+compiler warning. The MSYS2 updater and provider runner still report
+tool diagnostics. Android arm64 continues to emit ChromeOsAbiSupport.
+The AGP built-in Kotlin opt-out, Gradle configuration visibility
+deprecation and protobuf Unsafe warning remain build-tool diagnostics.
+[Android job](https://github.com/daviduhden/openi2pd/actions/runs/45662813093/job/139376892795)
+
+CW-029-01 repeated with sixteen debugedit warnings after DWZ. Successful
+Debian job 139376889668 now retains both .ddeb archives and checksums
+in artifact 15046948432. Standard packages and lintian checks passed.
+[Debian job](https://github.com/daviduhden/openi2pd/actions/runs/45662812845/job/139376889668)
+
+Both debug archive checksums matched. Inspection found a shared DWZ
+file and sixteen build-ID files in the daemon archive. The TUI archive
+contains one build-ID file and no shared DWZ file. Only the daemon
+package emitted the warnings. The local Debian override uses
+`dh_dwz --no-dwz-multifile` to retain per-image optimization and debug
+splitting while avoiding the rejected GNU alternate forms. Manual CI
+requires both debug packages and fails on the previously observed
+diagnostic. Losing cross-image deduplication can increase archive size.
+Pending CI tests.
+[Debhelper dh_dwz manual](https://manpages.debian.org/bookworm/debhelper/dh_dwz.1.en.html)
+[GNU DWARF alternate forms](https://sourceware.org/elfutils/DwarfExtensions)

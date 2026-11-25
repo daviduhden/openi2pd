@@ -1065,3 +1065,17 @@ Verified DatabaseStore processing owns refresh publication. The
 session test checks expiry and replacement without clock delays,
 and the source contract pins the lock-scoped ordering. Static finding,
 not a reported failure on 652024d2. Pending CI tests.
+
+## Audit all caller cancellation exits
+
+Timeout and interruption can leave the same remote SAF operation
+in flight. Both paths cancel the local future and request advisory
+cancellation for the matching operation. Preserve Java's interrupt status
+and the typed outcome. Separate actual provider cancellation from the
+wire and source-order tests.
+
+**RP-AA78-01.** A destination key identifies a lookup slot. It can be
+reused, and a retry can rearm the timer for the same request. Guard queued
+LeaseSet timeout and drop callbacks on the service thread with both the
+live request identity and the send attempt. Release completed ownership
+before invoking external completion. Pending CI tests.

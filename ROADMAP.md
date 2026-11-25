@@ -2761,3 +2761,20 @@ Pending CI tests.
 Remote LeaseSet expiry and refresh publication (RT-652-01) are
 Implemented / static with a focused replacement regression and a
 source-order check. Pending CI compilation and Pending CI tests.
+
+## aa78fa46 CI follow-up
+
+The LeaseSet expiry/replacement regression and Android Binder recovery
+are Validated by CI on the published revision. Active-provider SAF
+cancellation across processes remains Pending. RT-087 and the complete
+Perl::Critic profile remain CI failure. Focused Perl fixture cleanup
+and the SAF interruption-path correction are Implemented / static,
+Pending CI tests.
+[Exact batch](docs/ci/TEST-FAILURES.md#aa78fa46-manual-batch)
+
+Debian's per-image DWZ mitigation for CW-029-01 is Implemented / static
+and Pending CI tests. Keep per-image debug information, check both
+archives and compare their size after the next package build.
+
+LeaseSet timeout and drop callback authority (RT-AA78-01) is
+Implemented / static, Pending CI compilation and Pending CI tests.

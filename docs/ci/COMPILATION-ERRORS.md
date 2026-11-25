@@ -2565,3 +2565,14 @@ The distribution floor used GCC 13.3.0 and Clang 17.0.6 with
 libstdc++ 13 and system OpenSSL 3.0.13. The rolling provider jobs used
 GCC 16.2.0 and Clang 23.1.6 with OpenSSL 3.5.9 or 4.1.0.
 OpenBSD 8.0 used Clang 22.1.6 with LibreSSL 4.4.0.
+
+## aa78fa46 compilation and linking
+
+The [published run matrix](TEST-FAILURES.md#aa78fa46-manual-batch)
+compiled through the reviewed Linux, OpenBSD, Android and Windows
+test selections. The two failed workflows stopped in test execution
+or Perl lint. Keep RT-087 classified as child startup rather than
+a build or link failure.
+
+The distribution-floor provider was system OpenSSL 3.0.13. Rolling
+Linux used OpenSSL 3.5.9 and 4.1.0. OpenBSD used LibreSSL 4.4.0.

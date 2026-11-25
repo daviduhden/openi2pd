@@ -524,3 +524,13 @@ extended regexes and keep invalid-input controls beside the positive
 fixtures. Assemble a complete log record before opening its append handle
 and check both write and close status. Keep the full-profile and focused
 results separate in tracking.
+
+When refactoring an accepted Javadoc mutation fixture, assert that the
+expected literal changed before invoking the checker. For pipe-based
+fixtures, retain both the close result and the full wait status.
+
+For a mock command fixture, construct the child environment in a local
+hash before installing it with `local %ENV`. Keep inherited-variable
+removal and explicit fixture overrides in that order. When separating
+comment tokenization from the scanner, retain a multiline raw-string
+case that checks the following diagnostic line number.

@@ -3323,3 +3323,13 @@ For LeaseSet cache expiry, select and remove the same entry under the
 cache lock and release the retained owner outside it. Keep validated
 refresh publication in DatabaseStore processing so a deferred
 completion cannot overwrite or reparse a published snapshot.
+
+When a caller's deadline and thread interruption both abandon a SAF
+operation, check that both preserve typed results and request cancellation
+under the same operation authority. Keep actual provider behavior separate
+from static cancellation-path evidence. A diagnostic mutation must witness
+its edit even when its expected outcome is acceptance.
+
+A queued LeaseSet timer or drop completion needs both current request
+identity and current send attempt. Removing the lookup key alone does
+not invalidate an already queued callback on a reused key.

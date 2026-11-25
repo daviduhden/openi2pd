@@ -660,3 +660,11 @@ check failures both when writing it and when closing the stream. Keep
 multi-stage validation complete before the vector producer replaces any
 template.
 [TF-652-01](TEST-FAILURES.md#652024d2-manual-batch)
+
+## Keep lint cleanup tied to fixture behavior
+
+Use exact literal matching for repeated prose mutations. Assert the edit
+before running the checker, including mutations expected to be accepted.
+Capture a subprocess wait status immediately after closing the pipe.
+A shift alone can discard the signal bits that make a run fail.
+[TF-AA78-01](TEST-FAILURES.md#aa78fa46-manual-batch)

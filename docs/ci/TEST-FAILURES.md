@@ -2000,3 +2000,30 @@ converter contracts. The remaining profile findings stay open.
 Android API 29 recorded a matching Gradle cache restore from arm64. The
 separate x86_64 native dependency cache missed. The build used Temurin
 25.0.5+8, Gradle 9.8.1 and AGP 9.4.1.
+
+## aa78fa46 manual batch
+
+Paginated Actions metadata covers 695 runs at 96 SHAs, with 284 successes,
+342 failures and 69 cancellations. Full logs for the following ten runs
+belong to aa78fa46ef9c71588ce3b8a1985caee04674687d.
+
+| Run | Observed outcome |
+|---|---|
+| [Agent knowledge](https://github.com/daviduhden/openi2pd/actions/runs/45662813051) | Passed. |
+| [Validation](https://github.com/daviduhden/openi2pd/actions/runs/45662813101) | ASan+UBSan, UBSan, TSan each passed 279. Bounded fuzz smoke passed 15. Test::More passed 1578 across eight files, then Perl::Critic failed. |
+| [Provider TSan](https://github.com/daviduhden/openi2pd/actions/runs/45662813104) | Focused instrumented provider test passed. |
+| [Linux](https://github.com/daviduhden/openi2pd/actions/runs/45662813003) | GCC 13 and Clang 17 floor lanes each passed 279. Component install and historical interoperability vector checks passed. No differential binary was supplied. |
+| [OpenBSD](https://github.com/daviduhden/openi2pd/actions/runs/45662813465) | 274 selected, three expected root-suite skips. Both non-root credential cases, isolated root drop and POSIX front-end build passed. |
+| [Windows](https://github.com/daviduhden/openi2pd/actions/runs/45662813055) | MSYS2 passed with its expected AF_UNIX skip. MSVC passed 35/36, with RT-087 still open. |
+| [OpenSSL 3](https://github.com/daviduhden/openi2pd/actions/runs/45662813117) | GCC and Clang each passed 279 and the focused 10/3/9 selections. |
+| [OpenSSL 4](https://github.com/daviduhden/openi2pd/actions/runs/45662813053) | GCC and Clang each passed 279 and the focused 10/3/9 selections. |
+| [Packaging](https://github.com/daviduhden/openi2pd/actions/runs/45662812845) | Five jobs passed. The new artifact retained both Debian debug packages. |
+| [Android](https://github.com/daviduhden/openi2pd/actions/runs/45662813093) | Arm64 and API 29 x86_64 passed. API 29 recorded 65 passes, with no failures, errors or skips in artifact 15046802345. Signing skipped by input. |
+
+**TF-AA78-01.** The repository Perl::Critic profile emitted 814 records
+and exited 2 in job 139376889569. Test::More passed before the style step.
+Local cleanup preserves exact subprocess exit status, makes Javadoc
+mutation success observable and keeps interop fixture refusal and redaction
+semantics. Three corrected files pass focused Perl::Critic with the repo
+profile. The full profile remains open.
+[Perl quality job](https://github.com/daviduhden/openi2pd/actions/runs/45662813101/job/139376889569)
