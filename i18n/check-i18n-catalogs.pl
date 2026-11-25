@@ -45,7 +45,7 @@ my @catalogs = (
         path => File::Spec->catfile( $root, 'i18n', 'ChineseSimplified.cpp' )
     },
 );
-my @sources = map { File::Spec->catfile( $root, split m{/}, $_ ) } (
+my @sources = map { File::Spec->catfile( $root, split m{ / }x, $_ ) } (
     'tui/main.cpp',         'libi2pd_client/HTTPProxy.cpp',
     'daemon/Daemon.cpp',    'tools/autoconf_i2pd.cpp',
     'tui/TerminalUnix.cpp', 'tui/TerminalWin32.cpp'
@@ -83,7 +83,7 @@ sub unescape {
     # the literal "\\n" (a backslash and an 'n') into a newline, so an
     # escaped key collides with the key that really carries a newline.
     my %decode = ( n => "\n", t => "\t", '"' => '"', '\\' => '\\' );
-    $value =~ s/\\([nt"\\])/$decode{$1}/ge;
+    $value =~ s/ \\([nt"\\]) /$decode{$1}/gex;
     return $value;
 }
 
@@ -156,8 +156,10 @@ sub placeholders {
     my $flags           = qr/ [-+ 0#]* /x;
     my $field           = qr/ \* (?: $position )? | \d* /x;
     my $length_modifier = qr/ hh | ll | [hljztL] /x;
+    my $dimensions      = qr{ ( $field ) (?: \. ( $field ) )? }x;
     my @found;
     my $escaped_percent = 0;
+
     while ( $value =~ / % /gx ) {
         my $offset = pos($value);
         my $tail   = substr( $value, $offset );
@@ -169,8 +171,7 @@ sub placeholders {
         if (
             $tail =~ /
              ^ ( (?: $position )? $flags
-                 ( $field ) (?: \. ( $field ) )?
-                 ( $length_modifier )? ([diuoxXfFeEgGaAcspn]) )
+                 $dimensions ( $length_modifier )? ([diuoxXfFeEgGaAcspn]) )
              /x
           )
         {
@@ -210,60 +211,68 @@ sub valid_utf8 {
     # Reject overlong encodings, UTF-16 surrogates and code points above
     # U+10FFFF. The catalogs are compiled as UTF-8 literals and the TUI
     # measures display columns, so an invalid sequence would corrupt
-    # output
-    # long before any build step noticed it.
-    return $value !~ /[\x80-\xFF]/ || $value =~ /^(?:
-        [\x00-\x7F]|
-        [\xC2-\xDF][\x80-\xBF]|
-        \xE0[\xA0-\xBF][\x80-\xBF]|
-        [\xE1-\xEC\xEE\xEF][\x80-\xBF]{2}|
-        \xED[\x80-\x9F][\x80-\xBF]|
-        \xF0[\x90-\xBF][\x80-\xBF]{2}|
-        [\xF1-\xF3][\x80-\xBF]{3}|
-        \xF4[\x80-\x8F][\x80-\xBF]{2}
-    )*$/sx;
+    # output long before any build step noticed it.
+    my $continuation        = qr{ [\x80-\xBF] }x;
+    my $short               = qr{ [\x00-\x7F] | [\xC2-\xDF]$continuation }x;
+    my $three_byte_boundary = qr{ \xE0[\xA0-\xBF] | \xED[\x80-\x9F] }x;
+    my $three_bytes         = qr{
+        (?: $three_byte_boundary | [\xE1-\xEC\xEE\xEF]$continuation )
+        $continuation
+    }x;
+    my $four_bytes = qr{
+        (?: \xF0[\x90-\xBF] | [\xF1-\xF3]$continuation
+            | \xF4[\x80-\x8F] ) ${continuation}{2}
+    }x;
+    return $value !~ / [\x80-\xFF] /x
+      || $value   =~ / ^(?: $short | $three_bytes | $four_bytes )*$ /x;
 }
 
-for my $catalog (@catalogs) {
-    fail("missing catalog $catalog->{path}") unless -f $catalog->{path};
-    next                                     unless -f $catalog->{path};
-    my $text = read_file( $catalog->{path} );
-    fail("BOM in $catalog->{path}")  if $text =~ /^\xEF\xBB\xBF/;
-    fail("CRLF in $catalog->{path}") if $text =~ /\r\n/;
-    fail("invalid UTF-8 in $catalog->{path}") unless valid_utf8($text);
-    my $strings = parse_strings( $text, $catalog->{path} );
-    my $plurals = parse_plurals($text);
-    $catalog->{strings} = $strings;
-    $catalog->{plurals} = $plurals;
+sub load_catalogs {
+    for my $catalog (@catalogs) {
+        fail("missing catalog $catalog->{path}") unless -f $catalog->{path};
+        next                                     unless -f $catalog->{path};
+        my $text = read_file( $catalog->{path} );
+        fail("BOM in $catalog->{path}")  if $text =~ / ^\xEF\xBB\xBF /x;
+        fail("CRLF in $catalog->{path}") if $text =~ / \r\n /x;
+        fail("invalid UTF-8 in $catalog->{path}") unless valid_utf8($text);
+        my $strings = parse_strings( $text, $catalog->{path} );
+        my $plurals = parse_plurals($text);
+        $catalog->{strings} = $strings;
+        $catalog->{plurals} = $plurals;
 
-    for my $key ( keys %$strings ) {
-        my $value = $strings->{$key};
-        fail("invalid UTF-8 value for '$key' in $catalog->{path}")
-          unless valid_utf8($value);
-        my $want = placeholders($key);
-        my $got  = placeholders($value);
-        fail(
-"placeholder mismatch for '$key' in $catalog->{path} ($want != $got)"
-        ) if $want ne $got;
+        for my $key ( keys %$strings ) {
+            my $value = $strings->{$key};
+            fail("invalid UTF-8 value for '$key' in $catalog->{path}")
+              unless valid_utf8($value);
+            my $want = placeholders($key);
+            my $got  = placeholders($value);
+            fail( "placeholder mismatch for '$key' in $catalog->{path}",
+                " ($want != $got)" )
+              if $want ne $got;
 
-        # A trailing space in the English key is a word separator in a
-        # composed TUI line. If a translation stores its last word
-        # without it, the next label runs into the sentence, so treat a
-        # lost space as a defect.
-        if ( $key =~ / $/ && $value !~ / $/ ) {
-            fail("trailing space lost for '$key' in $catalog->{path}");
+            # A trailing space in the English key is a word separator in a
+            # composed TUI line. If a translation stores its last word
+            # without it, the next label runs into the sentence, so treat a
+            # lost space as a defect.
+            if ( $key =~ / \ $ /x && $value !~ / \ $ /x ) {
+                fail("trailing space lost for '$key' in $catalog->{path}");
+            }
+        }
+
+        # A protocol/config identifier must never become a catalog key.
+        my $sections = join '|',
+          qw(ntcp2 ssu2 httpproxy i2cp torrent privops privsep openbsd log http);
+        for my $key ( keys %$strings ) {
+            fail("translated identifier '$key' in $catalog->{path}")
+              if $key =~ / ^(?: $sections )\. /x
+              || $key =~ / ^(?:TORRENT-|ADMIN\ |I2PDTUI\/) /x
+              || $key =~ / ^magnet:\? /x;
         }
     }
-
-    # A protocol/config identifier must never become a catalog key.
-    for my $key ( keys %$strings ) {
-        fail("translated identifier '$key' in $catalog->{path}")
-          if $key =~
-/^(?:ntcp2|ssu2|httpproxy|i2cp|torrent|privops|privsep|openbsd|log|http)\./
-          || $key =~ /^(?:TORRENT-|ADMIN |I2PDTUI\/)/
-          || $key =~ /^magnet:\?/;
-    }
+    return;
 }
+
+load_catalogs();
 
 # Key parity between the three catalogs.
 my ($first) = @catalogs;
@@ -280,25 +289,33 @@ for my $catalog ( @catalogs[ 1 .. $#catalogs ] ) {
 
 # Plural arity: Spanish two forms, Russian three, Simplified Chinese
 # one.
-my %expected = ( es => 2, ru => 3, zh => 1 );
-for my $catalog (@catalogs) {
-    my $plurals = $catalog->{plurals};
-    my $want    = $expected{ $catalog->{name} };
-    for my $key ( sort keys %$plurals ) {
-        my $forms = $plurals->{$key};
-        fail(   "plural '$key' in $catalog->{name} has "
-              . scalar(@$forms)
-              . " forms, expected $want" )
-          if scalar(@$forms) != $want;
-        for my $form (@$forms) {
-            fail("empty plural form '$key' in $catalog->{name}") if $form eq '';
-            my $source_signature = placeholders($key);
-            my $form_signature   = placeholders($form);
-            fail("plural placeholder mismatch for '$key' in $catalog->{name}")
-              if $source_signature ne $form_signature;
+sub check_plural_forms {
+    my %expected = ( es => 2, ru => 3, zh => 1 );
+    for my $catalog (@catalogs) {
+        my $plurals = $catalog->{plurals};
+        my $want    = $expected{ $catalog->{name} };
+        for my $key ( sort keys %$plurals ) {
+            my $forms = $plurals->{$key};
+            fail(   "plural '$key' in $catalog->{name} has "
+                  . scalar(@$forms)
+                  . " forms, expected $want" )
+              if scalar(@$forms) != $want;
+            for my $form (@$forms) {
+                fail("empty plural form '$key' in $catalog->{name}")
+                  if $form eq '';
+                my $source_signature = placeholders($key);
+                my $form_signature   = placeholders($form);
+                fail(
+                    "plural placeholder mismatch for '$key' in $catalog->{name}"
+                ) if $source_signature ne $form_signature;
+            }
         }
     }
+    return;
 }
+
+check_plural_forms();
+
 my $basePlurals = $first->{plurals};
 for my $catalog ( @catalogs[ 1 .. $#catalogs ] ) {
     my $a = $catalog->{plurals};
@@ -326,24 +343,24 @@ sub harvest {
     # Adjacent string literals are concatenated by the C++ compiler
     # before the lookup, so the catalog key is the whole argument, not
     # its first fragment.
-    my $literal_run = qr/((?:"(?:[^"\\]|\\.)*"\s*)+)/;
-    if ( $source =~ m{\Atui/Terminal(?:Unix|Win32)\.cpp\z} ) {
-        while ( $text =~ /\bg_Error\s*=\s*$literal_run/g ) {
+    my $literal_run = qr/ ((?:"(?:[^"\\]|\\.)*"\s*)+) /x;
+    if ( $source =~ m{ \Atui/Terminal(?:Unix|Win32)\.cpp\z }x ) {
+        while ( $text =~ /\bg_Error\s*=\s*$literal_run/gx ) {
             my $run   = $1;
-            my @parts = $run =~ /"((?:[^"\\]|\\.)*)"/g;
+            my @parts = $run =~ / "((?:[^"\\]|\\.)*)" /gx;
             $keys{ unescape( join '', @parts ) } = 1;
         }
     }
-    while ( $text =~ /\btr\s*\(\s*$literal_run/g ) {
-        my @lits = $1 =~ /"((?:[^"\\]|\\.)*)"/g;
+    while ( $text =~ /\btr\s*\(\s*$literal_run/gx ) {
+        my @lits = $1 =~ / "((?:[^"\\]|\\.)*)" /gx;
         $keys{ unescape( join( '', @lits ) ) } = 1;
     }
-    while ( $text =~ /\bSetStatus\s*\(\s*$literal_run/g ) {
-        my @lits = $1 =~ /"((?:[^"\\]|\\.)*)"/g;
+    while ( $text =~ /\bSetStatus\s*\(\s*$literal_run/gx ) {
+        my @lits = $1 =~ / "((?:[^"\\]|\\.)*)" /gx;
         $keys{ unescape( join( '', @lits ) ) } = 1;
     }
-    while ( $text =~ /\bBeginPrompt\s*\([^,]+,\s*$literal_run/g ) {
-        my @lits = $1 =~ /"((?:[^"\\]|\\.)*)"/g;
+    while ( $text =~ /\bBeginPrompt\s*\([^,]+,\s*$literal_run/gx ) {
+        my @lits = $1 =~ / "((?:[^"\\]|\\.)*)" /gx;
         $keys{ unescape( join( '', @lits ) ) } = 1;
     }
 
@@ -355,54 +372,59 @@ sub harvest {
         # These arrays and descriptions are trusted source prose.
         # Drawing helpers must never harvest or translate runtime/user
         # strings.
-        while ( $text =~ /\bTAB_(?:SHORT_)?NAMES\s*=\s*\{(.*?)\};/sg ) {
+        while ( $text =~ / \bTAB_(?:SHORT_)?NAMES\s*=\s*\{(.*?)\}; /sgx ) {
             my $table = $1;
-            while ( $table =~ /$literal_run/g ) {
+            while ( $table =~ /$literal_run/gx ) {
                 my $run   = $1;
-                my @parts = $run =~ /"((?:[^"\\]|\\.)*)"/g;
+                my @parts = $run =~ / "((?:[^"\\]|\\.)*)" /gx;
                 $keys{ unescape( join '', @parts ) } = 1;
             }
         }
         if ( my ($help) =
-            $text =~ /void App::DrawHelp\b.*?lines\[\]\s*=\s*\{(.*?)\};/s )
+            $text =~ / void\ App::DrawHelp\b.*?lines\[\]\s*=\s*\{(.*?)\}; /sx )
         {
-            while ( $help =~ /$literal_run/g ) {
+            while ( $help =~ /$literal_run/gx ) {
                 my $run   = $1;
-                my @parts = $run =~ /"((?:[^"\\]|\\.)*)"/g;
+                my @parts = $run =~ / "((?:[^"\\]|\\.)*)" /gx;
                 my $key   = unescape( join '', @parts );
-                $key =~ s/^ +//;
+                $key =~ s/ ^\ + //x;
                 $keys{$key} = 1 if length($key) && $key ne 'b / %';
             }
         }
         while (
-            $text =~ /\boption\s*\(\s*"(?:[^"\\]|\\.)*"\s*,\s*$literal_run/g )
+            $text =~ /\boption\s*\(\s*"(?:[^"\\]|\\.)*"\s*,\s*$literal_run/gx )
         {
             my $run   = $1;
-            my @parts = $run =~ /"((?:[^"\\]|\\.)*)"/g;
+            my @parts = $run =~ / "((?:[^"\\]|\\.)*)" /gx;
             $keys{ unescape( join '', @parts ) } = 1;
         }
-        while ( $text =~ /\b(?:show|add)\s*\(\s*$literal_run/g ) {
-            my @lits = $1 =~ /"((?:[^"\\]|\\.)*)"/g;
+        while ( $text =~ /\b(?:show|add)\s*\(\s*$literal_run/gx ) {
+            my @lits = $1 =~ / "((?:[^"\\]|\\.)*)" /gx;
             $keys{ unescape( join( '', @lits ) ) } = 1;
         }
     }
     return \%keys;
 }
 
-my %used;
-for my $source (@sources) {
-    fail("missing source $source") unless -f $source;
-    next                           unless -f $source;
-    my $keys = harvest($source);
-    $used{$_} = $source for keys %$keys;
-}
-for my $key ( sort keys %used ) {
-    for my $catalog (@catalogs) {
-        fail(
-"$catalog->{name} catalog is missing source literal '$key' ($used{$key})"
-        ) unless exists $catalog->{strings}{$key};
+sub check_source_literals {
+    my %used;
+    for my $source (@sources) {
+        fail("missing source $source") unless -f $source;
+        next                           unless -f $source;
+        my $keys = harvest($source);
+        $used{$_} = $source for keys %$keys;
     }
+    for my $key ( sort keys %used ) {
+        for my $catalog (@catalogs) {
+            fail(
+"$catalog->{name} catalog is missing source literal '$key' ($used{$key})"
+            ) unless exists $catalog->{strings}{$key};
+        }
+    }
+    return;
 }
+
+check_source_literals();
 
 if (@errors) {
     print STDERR @errors;

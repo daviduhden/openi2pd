@@ -71,8 +71,8 @@ sub mismatch {
 sub source_without_comments {
     my ($path) = @_;
     my $source = slurp($path);
-    $source =~ s{/\*.*?\*/}{ }gs;
-    $source =~ s{//[^\n]*}{}g;
+    $source =~ s{/\*.*?\*/}{ }gsx;
+    $source =~ s{//[^\n]*}{}gx;
     return $source;
 }
 
@@ -83,7 +83,7 @@ my %primitive =
 
 sub jni_type {
     my ($type) = @_;
-    $type =~ s/\s+//g;
+    $type =~ s/\s+//gx;
     return $primitive{$type} if exists $primitive{$type};
     return 'void'            if $type eq 'void';
     return 'jstring'         if $type eq 'String';
@@ -93,7 +93,7 @@ sub jni_type {
     # arrays from its object-array slots, so other element types need
     # explicit review even though javac emits the same JNI C type.
     return 'jobjectArray' if $type eq 'byte[][]';
-    if ( $type =~ /\A(\w+)\[\]\z/ ) {
+    if ( $type =~ /\A(\w+)\[\]\z/x ) {
         my $element = $1;
         return $primitive{$element} . 'Array' if exists $primitive{$element};
     }
@@ -120,16 +120,19 @@ sub java_signatures {
 
     # Consume quoted and comment tokens together so a URL inside a
     # string is never mistaken for the start of a line comment.
-    $source =~ s{
-        // [^\n]* | /\* .*? \*/
-        | """ (?: \\. | (?!"""). )* """
-        | "(?: [^"\\\n] | \\. )*"
-        | '(?: [^'\\\n] | \\. )*'
-    }{ }gsx;
+    my $comment    = qr{ // [^\n]* | /\* .*? \*/ }sx;
+    my $text_block = qr{ """ (?: \\. | (?!"""). )* """ }sx;
+    my $string     = qr{ " (?: [^"\\\n] | \\. )* " }x;
+    my $character  = qr{ ' (?: [^'\\\n] | \\. )* ' }x;
+    $source =~ s{ $comment | $text_block | $string | $character }{ }gx;
+    my $modifier =
+      qr{ public | protected | private | static | final | synchronized }x;
+    my $java_type = qr{ [\w<>\[\]\s?]+? }x;
+
     while (
         $source =~ /
-        ((?:(?:public|protected|private|static|final|synchronized)\s+)*)
-        \bnative\s+([\w<>\[\]\s?]+?)\s+(\w+)\s*\(([^()]*)\)\s*;
+        ((?: $modifier \s+ )*)
+        \bnative \s+ ($java_type) \s+ (\w+) \s* \(([^()]*)\) \s* ;
     /gx
       )
     {
@@ -137,10 +140,10 @@ sub java_signatures {
           ( $1, $2, $3, $4 );
         my @signature = (
             jni_type($return_type), 'JNIEnv*',
-            $modifiers =~ /\bstatic\b/ ? 'jclass' : 'jobject'
+            $modifiers =~ /\bstatic\b/x ? 'jclass' : 'jobject'
         );
-        for my $parameter ( split /,/, $parameters, -1 ) {
-            if ( $parameter =~ /\A\s*([\w<>\[\]\s?]+?)\s+\w+\s*\z/ ) {
+        for my $parameter ( split /,/x, $parameters, -1 ) {
+            if ( $parameter =~ /\A\s*([\w<>\[\]\s?]+?)\s+\w+\s*\z/x ) {
                 my $type = jni_type($1);
                 push @signature,
                   defined($type) && $type ne 'void' ? $type : undef;
@@ -157,7 +160,7 @@ sub java_signatures {
     }
 
     # Reject unsupported declaration syntax rather than dropping it.
-    my $native_count = () = $source =~ /\bnative\b/g;
+    my $native_count = () = $source =~ /\bnative\b/gx;
     if ( !$native_count || $native_count != keys %entries ) {
         mismatch('could not account for every Java native declaration');
     }
@@ -167,20 +170,21 @@ sub java_signatures {
 sub cpp_signatures {
     my ( $source, $label, $terminator ) = @_;
     my %entries;
+    my $jni_export = qr{ \bJNIEXPORT \s+ (\w+) \s+ JNICALL \s+ }x;
+    my $jni_symbol = qr{ Java_org_openi2pd_router_I2PD_1JNI_(\w+) }x;
     while (
         $source =~ /
-        \bJNIEXPORT\s+(\w+)\s+JNICALL\s+
-        Java_org_openi2pd_router_I2PD_1JNI_(\w+)\s*
-        \(([^()]*)\)\s*(noexcept\s*)?\Q$terminator\E
+        $jni_export $jni_symbol \s*
+        \(([^()]*)\) \s* (noexcept\s*)? \Q$terminator\E
     /gx
       )
     {
         my ( $return_type, $name, $parameters, $noexcept ) = ( $1, $2, $3, $4 );
         my @signature = ($return_type);
-        for my $parameter ( split /,/, $parameters, -1 ) {
-            if ( $parameter =~ /\A\s*(JNIEnv\s*\*|\w+)(?:\s*\b\w+)?\s*\z/ ) {
+        for my $parameter ( split /,/x, $parameters, -1 ) {
+            if ( $parameter =~ /\A\s*(JNIEnv\s*\*|\w+)(?:\s*\b\w+)?\s*\z/x ) {
                 my $type = $1;
-                $type =~ s/\s+//g;
+                $type =~ s/\s+//gx;
                 push @signature, $type;
             }
             else {
@@ -194,21 +198,21 @@ sub cpp_signatures {
 }
 
 sub compare_signatures {
-    my ( $java, $native, $label ) = @_;
-    for my $name ( sort keys %{$java} ) {
-        if ( !exists $native->{$name} ) {
+    my ( $java_signatures, $native_signatures, $label ) = @_;
+    for my $name ( sort keys %{$java_signatures} ) {
+        if ( !exists $native_signatures->{$name} ) {
             mismatch("missing $label for native $name");
             next;
         }
-        my $expected = $java->{$name}{abi};
-        my $actual   = $native->{$name}{abi};
+        my $expected = $java_signatures->{$name}{abi};
+        my $actual   = $native_signatures->{$name}{abi};
         mismatch(
 "$label signature mismatch for native $name (expected $expected; found $actual)"
         ) if $expected ne $actual;
     }
-    for my $name ( sort keys %{$native} ) {
+    for my $name ( sort keys %{$native_signatures} ) {
         mismatch("$label $name has no Java native declaration")
-          if !exists $java->{$name};
+          if !exists $java_signatures->{$name};
     }
     return;
 }
