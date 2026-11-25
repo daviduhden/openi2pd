@@ -530,6 +530,9 @@ does not resolve intentional ABI coverage or AGP deprecation findings.
   path <=8192 chars, 32 path components and 16384-byte read/write chunks.
   Raising any cap is an AIDL contract change requiring coordinator review. No
   FD crosses Binder; never delete a user-chosen export document automatically.
+  Check both future timeout and caller interruption paths for remote
+  advisory cancellation. Restore the interrupt flag and keep provider
+  deadlines and broker generation checks in effect.
 - Native code claims one process role (`Router`/`StorageBroker`) before its
   first router/document entry; a conflict returns `process-role-conflict`.
   `stopDaemon` publishes the native stop token before the monitor and a start

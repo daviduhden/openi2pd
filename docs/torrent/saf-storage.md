@@ -143,6 +143,11 @@ ambiguous: the engine invalidates the piece and verifies/re-downloads on a later
 attempt. A failed seed read also clears the torrent's seeding completion state,
 so it can recover instead of remaining falsely complete.
 
+A caller deadline or interruption cancels the local future and sends
+advisory cancellation through the current broker control endpoint. The
+interrupted caller retains its interrupt flag. Provider work that has
+already started remains subject to the broker's deadlines.
+
 SAF torrent creation reads provider streams directly on the app's SAF worker;
 it does not go through this broker watchdog. Its 30-minute deadline cancels a
 `CancellationSignal`, but a provider that ignores cancellation can keep the

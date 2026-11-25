@@ -1868,6 +1868,13 @@ if(NOT saf_payload_admission MATCHES "synchronized [(]lock[)]"
     OR NOT saf_payload_admission MATCHES "deadline - android[.]os[.]SystemClock[.]elapsedRealtime[(][)] <= 0")
   message(FATAL_ERROR "SAF payload admission must recheck the binding and deadline after authentication")
 endif()
+string(REGEX MATCH
+  "catch [(]InterruptedException interrupted[)] [{][^}]*future[.]cancel[(]true[)];[^}]*[}]"
+  saf_payload_interrupt "${grant_source}")
+if(NOT saf_payload_interrupt MATCHES
+    "future[.]cancel[(]true[)];[^}]*Thread[.]currentThread[(][)][.]interrupt[(][)];[^}]*cancelOperation[(]session[)];[^}]*Failure[.]UNAVAILABLE")
+  message(FATAL_ERROR "Interrupted SAF payload callers must retain interruption and request advisory remote cancellation")
+endif()
 foreach(required IN ITEMS "mutex.isHeldByCurrentThread() || !mutex.tryLock()"
     "mappingAuthority.run(() -> selectGrantLocked(app, key, tree))"
     "mappingAuthority.run(() -> detachGrantLocked(app, key))"

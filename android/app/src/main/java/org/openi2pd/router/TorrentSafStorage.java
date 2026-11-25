@@ -1299,6 +1299,8 @@ final class TorrentSafStorage {
             if (future != null)
                 future.cancel(true);
             Thread.currentThread().interrupt();
+            // The executor interruption cannot cancel a remote provider.
+            cancelOperation(session);
             return Outcome.of(fallback, Failure.UNAVAILABLE);
         }
     }
