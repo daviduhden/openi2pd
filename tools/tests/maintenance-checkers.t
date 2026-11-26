@@ -790,6 +790,20 @@ sub openbsd_workflow_fixtures {
             'OpenBSD diagnostic identifies the lost copyback contract'
         );
     }
+    my $without_make_strict = $openbsd_source;
+    my $make_strict_removed = $without_make_strict =~
+      s/(CMAKE_FLAGS="[^"\n]+)[ ]-DI2PD_WARNINGS_AS_ERRORS=[^"\n]+"/$1"/mx;
+    ok( $make_strict_removed,
+        'remove strict warnings from the Make invocation only' );
+    write_file( $openbsd, $without_make_strict );
+    ( $code, $out ) = run_checker($checker);
+    is( $code, 1, 'the primary build cannot cover a missing Make strict flag' );
+    like(
+        $out,
+        qr/POSIX[ ]Make[ ]front[ ]end[ ]\/[ ]-DI2PD_WARNINGS_AS_ERRORS/x,
+        'strict warning diagnostic identifies the secondary build'
+    );
+
     my $without_upload = $openbsd_source;
     my $removed_upload = $without_upload =~ s/^[ \t]*build[.]log[ \t]*\n//mx;
     ok( $removed_upload, 'OpenBSD mutation removes upload entry only' );

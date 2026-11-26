@@ -295,6 +295,9 @@ sub openbsd_copyback_errors {
             'Build with the OpenBSD POSIX Make front end',
             'build_openbsd',
             'make BUILD_DIR=build-make',
+q{-DI2PD_WARNINGS_AS_ERRORS=${{ inputs.warnings_as_errors && 'ON' || 'OFF' }}},
+            'router > build-make.log 2>&1',
+            'exit "$make_status"',
             'test -x build-make/i2pd'
         ]
     );
@@ -312,10 +315,11 @@ sub openbsd_copyback_errors {
         }
     }
     for my $required (
-        'if: always()',                  'uses: actions/upload-artifact@',
-        'build-output/Testing',          'configure.log',
-        'build.log',                     'ctest-openbsd.xml',
-        'ctest-openbsd-credentials.xml', 'ctest-openbsd-credential-drop.xml'
+        'if: always()',         'uses: actions/upload-artifact@',
+        'build-output/Testing', 'configure.log',
+        'build.log',            'build-make.log',
+        'ctest-openbsd.xml',    'ctest-openbsd-credentials.xml',
+        'ctest-openbsd-credential-drop.xml'
       )
     {
         push @violations,

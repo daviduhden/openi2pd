@@ -834,3 +834,7 @@ When a documentation job compiles several manual pages serially, inspect
 its uploaded build transcript for the exact staged page and diagnostics.
 Track renderer, help compiler and archive verification separately until
 the job reaches each stage.
+
+For the OpenBSD POSIX Make phase, check the dispatch flag in CMAKE_FLAGS
+and its own build-make.log upload. The direct Ninja phase has a separate
+cache and transcript.

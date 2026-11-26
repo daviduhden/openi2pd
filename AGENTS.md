@@ -3361,3 +3361,8 @@ connection and release it after observing the exact broker generation.
 When a closed startup comparison isolates a launch flag, retain the
 job, token and handle policies in the production fix. Verify the full
 worker handshake and shutdown independently of the probe exit.
+
+Check every independently configured build tree when auditing strict
+compiler options. A wrapper may configure a second cache even within
+the same successful job. Retain the secondary transcript and verify
+that removing its flag alone fails the source contract.

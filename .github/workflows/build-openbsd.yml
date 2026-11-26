@@ -149,9 +149,15 @@ jobs:
         shell: openbsd {0}  # zizmor: ignore[misfeature] custom shell required by vmactions/openbsd-vm failure copyback
         run: |
           set -eu
-          make BUILD_DIR=build-make \
-            CMAKE_FLAGS="-DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DI2PD_OPENSSL_EXPECT=LibreSSL" \
-            router
+          if make BUILD_DIR=build-make \
+            CMAKE_FLAGS="-DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DI2PD_OPENSSL_EXPECT=LibreSSL -DI2PD_WARNINGS_AS_ERRORS=${{ inputs.warnings_as_errors && 'ON' || 'OFF' }}" \
+            router > build-make.log 2>&1; then
+            cat build-make.log
+          else
+            make_status=$?
+            cat build-make.log
+            exit "$make_status"
+          fi
           test -x build-make/i2pd
       - name: Upload OpenBSD test logs
         if: always()
@@ -162,6 +168,7 @@ jobs:
             build-output/Testing
             configure.log
             build.log
+            build-make.log
             ctest-openbsd.xml
             ctest-openbsd-credentials.xml
             ctest-openbsd-credential-drop.xml
