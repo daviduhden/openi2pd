@@ -6,15 +6,24 @@
 set -eu
 
 dir=${1:?JUnit report directory required}
+case ${2-} in
+'') require_broker=false ;;
+--require-saf-broker) require_broker=true ;;
+*)
+	echo "Unknown report requirement" >&2
+	exit 1
+	;;
+esac
+broker_executed=false
 executed=false
 for report in "$dir"/TEST-*.xml; do
-    if [ ! -f "$report" ]; then
-        echo "Missing JUnit reports in $dir" >&2
-        exit 1
-    fi
-    # Both writers expose suite counters and direct testcase children.
-    # Read only structural elements; stderr and stdout can quote XML.
-    valid=$(xmllint --nonet --xpath 'boolean(
+	if [ ! -f "$report" ]; then
+		echo "Missing JUnit reports in $dir" >&2
+		exit 1
+	fi
+	# Both writers expose suite counters and direct testcase children.
+	# Read only structural elements; stderr and stdout can quote XML.
+	valid=$(xmllint --nonet --xpath 'boolean(
       /*[self::testsuite or self::testsuites] and //testsuite
       and not(//testsuite[
         not(number(@tests) = count(testcase))
@@ -25,16 +34,33 @@ for report in "$dir"/TEST-*.xml; do
         or (@skipped and not(number(@skipped) = count(testsuite/testcase/skipped)))
         or not(number(@failures) = 0 and number(@errors) = 0)])
       and not(//failure or //error))' "$report")
-    if [ "$valid" != true ]; then
-        echo "Invalid suite counts or failed tests in $report" >&2
-        exit 1
-    fi
-    ran=$(xmllint --nonet --xpath 'boolean(//testsuite/testcase[not(skipped)])' "$report")
-    if [ "$ran" = true ]; then
-        executed=true
-    fi
+	if [ "$valid" != true ]; then
+		echo "Invalid suite counts or failed tests in $report" >&2
+		exit 1
+	fi
+	ran=$(xmllint --nonet --xpath 'boolean(//testsuite/testcase[not(skipped)])' "$report")
+	if [ "$ran" = true ]; then
+		executed=true
+	fi
+	if [ "$require_broker" = true ]; then
+		# The API 29 CI image must exercise the broker. Other devices
+		# may skip these tests when the native restriction is unavailable.
+		covered=$(xmllint --nonet --xpath 'boolean(//testsuite[
+          @name="org.openi2pd.router.TorrentSafBrokerContractTest"
+          and not(testcase/skipped)
+          and testcase[@name="replacedControlCannotRetireTheBroker"]
+          and testcase[@name="retireIsGenerationFencedAndRebindYieldsANewGeneration"]
+          and testcase[@name="reboundBrokerAnswersTheWholeTypedSurface"]])' "$report")
+		if [ "$covered" = true ]; then
+			broker_executed=true
+		fi
+	fi
 done
+if [ "$require_broker" = true ] && [ "$broker_executed" != true ]; then
+	echo "Missing executed SAF broker retirement and rebind coverage in $dir" >&2
+	exit 1
+fi
 if [ "$executed" != true ]; then
-    echo "No executed test cases in $dir" >&2
-    exit 1
+	echo "No executed test cases in $dir" >&2
+	exit 1
 fi

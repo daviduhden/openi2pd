@@ -174,6 +174,10 @@ jobs:
           report="$fixture/TEST-fixture.xml"
           printf '%s\n' '<testsuite tests="1" errors="0" failures="0"><testcase/></testsuite>' > "$report"
           sh android/tools/check-junit-reports.sh "$fixture"
+          if sh android/tools/check-junit-reports.sh "$fixture" --require-saf-broker; then
+            echo "Unrelated executed case accepted as SAF coverage" >&2
+            exit 1
+          fi
           for body in '<testcase><skipped/></testcase>' '<testcase><failure/></testcase>' ''; do
             printf '<testsuite tests="1" errors="0" failures="0">%s</testsuite>\n' "$body" > "$report"
             if sh android/tools/check-junit-reports.sh "$fixture"; then
@@ -181,6 +185,19 @@ jobs:
               exit 1
             fi
           done
+          broker_fixture() {
+            printf '%s\n' '<testsuite name="org.openi2pd.router.TorrentSafBrokerContractTest" tests="3" errors="0" failures="0">' \
+              '<testcase name="replacedControlCannotRetireTheBroker"/>' \
+              '<testcase name="retireIsGenerationFencedAndRebindYieldsANewGeneration"/>' \
+              '<testcase name="reboundBrokerAnswersTheWholeTypedSurface">'"$1"'</testcase>' '</testsuite>' > "$report"
+          }
+          broker_fixture ''
+          sh android/tools/check-junit-reports.sh "$fixture" --require-saf-broker
+          broker_fixture '<skipped/>'
+          if sh android/tools/check-junit-reports.sh "$fixture" --require-saf-broker; then
+            echo "Skipped SAF rebind accepted as executed" >&2
+            exit 1
+          fi
           sh android/tools/check-junit-reports.sh android/app/build/test-results/testDebugUnitTest
       - name: Assert Java 25 class-file output
         run: |
@@ -704,7 +721,7 @@ jobs:
             -Pi2pd.abis=x86_64 \
             -Pandroid.injected.build.abi=x86_64 \
             -Pi2pd.cmakeArgs="$I2PD_ANDROID_CMAKE_ARGS"
-          sh tools/check-junit-reports.sh app/build/outputs/androidTest-results/connected/debug
+          sh tools/check-junit-reports.sh app/build/outputs/androidTest-results/connected/debug --require-saf-broker
       - name: Collect emulator diagnostics on failure
         if: failure()
         timeout-minutes: 1

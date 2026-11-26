@@ -130,6 +130,9 @@ run Gradle, install an APK or run a device test.
   file and instrumentation wraps the suites in a totals element. Check
   counts and testcase outcomes, including at least one executed case.
   Keep negative report fixtures beside the JVM workflow check.
+  In the API 29 emulator lane, inspect the named SAF broker suite for
+  actual retirement, replaced-control and rebind executions. Other
+  suites can pass when Binder assumptions skip every broker case.
 
 - Broker retirement instrumentation binds the non-exported debug fixture
   service in its own process. It inherits the production Binder and
