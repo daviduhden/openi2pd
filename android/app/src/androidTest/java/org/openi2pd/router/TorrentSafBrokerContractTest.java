@@ -143,7 +143,8 @@ public final class TorrentSafBrokerContractTest {
         connection = fresh;
         assertTrue("Broker did not connect within the budget",
                 connected.await(Math.max(0L, deadline - SystemClock.elapsedRealtime()),
-                        TimeUnit.MILLISECONDS) && callbackTime.get() <= deadline);
+                        TimeUnit.MILLISECONDS)
+                        && callbackTime.get() <= deadline);
         binder = result.get();
         // The broker stops itself when the native sandbox restriction
         // is unavailable, which is a device capability issue, not a

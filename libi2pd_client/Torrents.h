@@ -630,7 +630,11 @@ namespace torrents
 		PieceFileFragment (const PieceFileFragment &) = default;
 	};
 
-	enum class BitfieldUse { Resume, Advertise };
+	enum class BitfieldUse
+	{
+		Resume,
+		Advertise
+	};
 
 	class PeerConnection;
 	/// One piece's block map, buffer and SHA-1 verification state. The
@@ -1350,8 +1354,8 @@ namespace torrents
 		/// @return (bitfield, true = all set, false = none set,
 		///         indeterminate = mixed). A metadata-less torrent returns an
 		///         empty bitfield and false.
-		std::pair<std::vector<uint8_t>, boost::logic::tribool>
-		CreateBitfield (BitfieldUse use = BitfieldUse::Resume) const; // (bitfield, true - all false - none)
+		std::pair<std::vector<uint8_t>, boost::logic::tribool> CreateBitfield (
+			BitfieldUse use = BitfieldUse::Resume) const; // (bitfield, true - all false - none)
 		/// Build the swarm-availability bitmap: the union of every
 		/// established peer's advertised bitfield, clamped to the local
 		/// piece count and padded to the exact wire length.

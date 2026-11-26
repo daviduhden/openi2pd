@@ -1691,11 +1691,8 @@ sub doxygen_duplicate_parameter_fixtures {
     is( $code, 1,
         'Doxygen checker rejects a definition repeating header @param docs' );
     my $duplicate = q{duplicate @param documentation for Load};
-    like(
-        $out,
-        qr/\Q$duplicate\E/x,
-        'declaration/definition duplicate names the function'
-    );
+    like( $out, qr/\Q$duplicate\E/x,
+        'declaration/definition duplicate names the function' );
     like(
         $out,
         qr/probe\.h:\d+[ ]already[ ]documents[ ]it/x,
@@ -1774,11 +1771,8 @@ sub doxygen_reference_fixtures {
     my ( $code, $out ) = run_checker( $doxygen_checker, '--root', $tmp );
     is( $code, 1, 'Doxygen checker rejects an unresolved \@ref target' );
     my $unknown_reference = q{unresolved @ref target 'mutex'};
-    like(
-        $out,
-        qr/\Q$unknown_reference\E/x,
-        'unresolved-reference diagnostic names the target'
-    );
+    like( $out, qr/\Q$unknown_reference\E/x,
+        'unresolved-reference diagnostic names the target' );
 
     write_file( $header,
             "enum class StorageArtifact { A };\n"
@@ -1810,11 +1804,8 @@ sub doxygen_block_command_fixtures {
     my ( $code, $out ) = run_checker( $doxygen_checker, '--root', $tmp );
     is( $code, 1, 'Doxygen checker rejects a Javadoc inline tag' );
     my $inline_tag = q{Javadoc inline tag in a C/C++ comment};
-    like(
-        $out,
-        qr/\Q$inline_tag\E/x,
-        'inline-tag diagnostic names the correct replacement'
-    );
+    like( $out, qr/\Q$inline_tag\E/x,
+        'inline-tag diagnostic names the correct replacement' );
 
     write_file( $header,
             "class Probe\n{\npublic:\n"
@@ -1836,11 +1827,8 @@ sub doxygen_block_command_fixtures {
     ( $code, $out ) = run_checker( $doxygen_checker, '--root', $tmp );
     is( $code, 1, 'Doxygen checker rejects an unclosed verbatim block' );
     my $unbalanced = q{unbalanced @verbatim};
-    like(
-        $out,
-        qr/\Q$unbalanced\E/x,
-        'unbalanced-verbatim diagnostic names the block'
-    );
+    like( $out, qr/\Q$unbalanced\E/x,
+        'unbalanced-verbatim diagnostic names the block' );
     return;
 }
 doxygen_block_command_fixtures();

@@ -183,6 +183,8 @@ A no-op mutation failing is a fixture defect, not a product runtime failure.
   `validate-perl` wrapper defaults to severity 5 and discovers scripts by
   extension. Run `.perlcriticrc` separately and include the extensionless
   `tools/scripts/i2pdctl` to match the repository inventory.
+  A format pass reports rewritten files as issues. Inspect those diffs,
+  then run check mode to distinguish rewrites from outstanding diagnostics.
 - Before replacing `return undef` with an empty return, check all callers.
   Scalar absence is preserved, but list-context cardinality changes.
 - For OpenBSD rc.d templates, follow the real `rc.subr` with ShellCheck
