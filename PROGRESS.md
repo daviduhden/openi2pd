@@ -9176,3 +9176,11 @@ and deferred torrent availability, tightened Android XML evidence, and
 classified sanitizer output from native child processes. The published
 ASan+UBSan, UBSan, TSan and fuzz LastTest logs contained no report headers.
 The four supplemental warnings-as-errors runs use the published SHA.
+
+## ffc93c2e strict CI audit
+
+All ten dispatches succeeded. Windows completed live supervisor startup
+and archive verification; the three sanitizer jobs, dedicated instrumented
+TSan and bounded fuzzing passed. The local follow-up records new
+partial-piece upload admission and platform evidence checks. See the
+[run inventory](docs/ci/TEST-FAILURES.md#ffc93c2e-manual-batch).

@@ -2172,3 +2172,35 @@ published revision are [OpenSSL 3](https://github.com/daviduhden/openi2pd/action
 [OpenSSL 4](https://github.com/daviduhden/openi2pd/actions/runs/45697402768),
 [OpenBSD](https://github.com/daviduhden/openi2pd/actions/runs/45697402588)
 and [Windows](https://github.com/daviduhden/openi2pd/actions/runs/45697402030).
+
+## ffc93c2e manual batch
+
+Ten successful manual dispatches tested `ffc93c2e11216f3ef0cd82dde1e9f40bc4278299`.
+The paginated inventory now covers 739 runs on 100 revisions (315
+successful, 355 failed, 69 cancelled). Four additional strict runs on
+49aee384 preceded this batch: both OpenSSL branches and OpenBSD passed;
+[Windows](https://github.com/daviduhden/openi2pd/actions/runs/45697402030)
+repeated the worker and manual failures. The comparison adds fourteen
+full run logs to the preceding historical audit.
+
+| Workflow | Observed coverage |
+|---|---|
+| [Linux](https://github.com/daviduhden/openi2pd/actions/runs/45706593887) | GCC 13.3 and Clang 17.0.6 with system OpenSSL 3.0.13, installation and consumer passed. Reference vectors: 24 static/vector successes, two known gaps, no differential binary. |
+| [Packaging and service validation](https://github.com/daviduhden/openi2pd/actions/runs/45706593790) | All five package/service jobs passed. |
+| [Android](https://github.com/daviduhden/openi2pd/actions/runs/45706593762) | Arm64 JVM: 187 cases. API 29: 65 cases including six SAF broker tests. Neither suite reported skips. Production signing skipped by dispatch choice. |
+| [Validation](https://github.com/daviduhden/openi2pd/actions/runs/45706593756) | Debug ASan+UBSan, UBSan and TSan selected 280 each; bounded fuzz smoke selected 15. Source API and skills passed. Perl: 1,619 assertions in eight files; empty critic findings. |
+| [Windows](https://github.com/daviduhden/openi2pd/actions/runs/45706593741) | MSVC selected and passed 36, including the live supervisor. PageHeap enabled for 12 images. MSYS2 passed 263 of 264, skipping the POSIX control socket. HHC and archive verification passed for 19 manual entries. |
+| [Linux OpenSSL 4.x](https://github.com/daviduhden/openi2pd/actions/runs/45706593738) | Release GCC 16.2 and Clang 23.1 with OpenSSL 4.1.0, strict builds and tests passed. |
+| [Instrumented OpenSSL TSan diagnostic](https://github.com/daviduhden/openi2pd/actions/runs/45706593731) | Debug Clang 23.1.6 with instrumented OpenSSL 4.1.0 passed. |
+| [OpenBSD](https://github.com/daviduhden/openi2pd/actions/runs/45706593729) | Clang 22.1.6, LibreSSL 4.4.0. Main suite selected 275 and skipped three. Separate non-root credential JUnit recorded two executed, privileged drop one. Exec-free torrent storage supervisor provisioning remains unavailable. |
+| [Linux OpenSSL 3.x](https://github.com/daviduhden/openi2pd/actions/runs/45706593585) | Release GCC 16.2 and Clang 23.1 with OpenSSL 3.5.9, strict builds and tests passed. |
+| [Agent Knowledge Validation](https://github.com/daviduhden/openi2pd/actions/runs/45706593574) | Agent knowledge checks passed. |
+
+TF-FFC9-01 (preventive, pending CI): Android's aggregate JUnit gate
+could pass with the broker retirement cases omitted. The UI job now
+requires the named cases. The previous run actually executed them.
+TF-FFC9-02 (preventive, pending CI): each PageHeap debugger command
+file must emit its own arming marker before a clean result is accepted.
+
+The provider versions above leave OpenSSL 3.0.2, the OpenSSL 4.0.x
+series and LibreSSL 4.0 unverified by this batch.

@@ -1109,3 +1109,11 @@ either field becomes externally available.
 The Android SAF binding fixture now measures callback arrival against
 one absolute deadline. Instrumentation-thread scheduling after publication
 of the binder cannot by itself invalidate a timely callback.
+
+## ffc93c2e preventive review
+
+At an asynchronous disk handoff, check that admitted data satisfies
+the downstream verification unit and capture its generation together
+with the eligibility decision (RT-FFC9-01). For opt-in platform probes,
+check the individual scenario's result and instrument arming before
+using an aggregate success to close a historical failure (TF-FFC9-01/02).

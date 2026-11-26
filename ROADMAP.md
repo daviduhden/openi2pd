@@ -2806,3 +2806,9 @@ closed loader probe for RT-087.
 Run the manual Windows workflow on the corrected revision. Require the
 compiled manual archive and the live worker handshake and shutdown.
 Keep the succeeded MSYS2 lane in the matrix.
+
+## After the ffc93c2e manual matrix
+
+Windows worker and manual validation passed. Exercise the new partial-piece
+upload controls and platform-specific evidence guards on the next published
+revision. Retain the OpenBSD provisioning and live Java differential gaps.

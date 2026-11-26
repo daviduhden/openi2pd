@@ -686,3 +686,13 @@ rewrite can otherwise break multiple platform lanes after a clean build.
 For a strict manual generation failure, inspect the canonical page named
 by each diagnostic. A successful render of an earlier page leaves later
 pages and the help compiler unverified. See CW-49AE-01.
+
+## CP-FFC9-01 — Strict options across independent build trees
+
+The [OpenBSD job](https://github.com/daviduhden/openi2pd/actions/runs/45706593729/job/139530052308)
+passed the strict input to build-output. Its POSIX Make phase configured
+build-make separately and omitted I2PD_WARNINGS_AS_ERRORS. The workflow
+now forwards that input to both configurations and retains build-make.log
+on either exit. A mutation removes only the Make argument to verify the
+guard. Windows MSVC, MSYS2 and the Linux OpenSSL composite each pass
+the input at their respective configure boundary. Pending CI tests.

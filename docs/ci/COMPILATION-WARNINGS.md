@@ -1497,3 +1497,22 @@ The local Java-only module uses `enableKotlin = false` and removes the
 deprecated global flag. The setter exists in the pinned AGP 9.4.1 API.
 Confirm class-file target 69, dexing and warning removal on the next
 Android build. [Android Gradle plugin migration timeline](https://developer.android.com/build/releases/gradle-plugin-roadmap)
+
+## CW-FFC9-01 — Android host-tool deprecations and ABI lint
+
+On `ffc93c2e` the [API 29 job](https://github.com/daviduhden/openi2pd/actions/runs/45706593762/job/139530053208)
+reports Gradle 9.8.1's deprecation of Configuration.setVisible(boolean)
+from AGP's built-in Kotlin services. The project-wide Kotlin opt-out
+warning no longer appears. Gradle schedules the API's removal for 11.
+Track the plugin's migration before switching Gradle major versions.
+[Gradle migration guide](https://docs.gradle.org/9.8.1/userguide/upgrading_version_9.html#deprecate-visible-property)
+
+The release ABI selection still produces ChromeOsAbiSupport in debug
+and release lint at app/build.gradle:89 and :109. The x86_64 emulator
+build is separate. Host instrumentation still uses protobuf's deprecated
+Unsafe path; changing app runtime dependencies would not address the
+host classpath. [Protobuf upstream issue](https://github.com/protocolbuffers/protobuf/issues/20760)
+
+Windows debugger output also contains a module checksum lookup warning.
+The CHM artifact digest and HHC verification are separate evidence.
+No new project native compiler warning was identified in the batch.

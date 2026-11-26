@@ -3033,14 +3033,21 @@ Implemented / static, Pending CI compilation and Pending CI tests.
 
 | ID | State | Remaining work |
 |---|---|---|
-| CI-2D04-01 | Pending CI tests | Doxygen, Perl inventories and SAF death observation passed on 49aee384. CHM progressed to the tools manual; see CI-49AE-01. |
+| CI-2D04-01 | Validated by CI | Doxygen, Perl inventories and SAF death observation passed on 49aee384. CHM archive verification passed on ffc93c2e (CI-49AE-01). |
 | CI-2D04-02 | Validated by CI | RT-087 comparison captured both exits under identical containment on 49aee384. Production handshake validation continues under CI-49AE-02. |
 
 ## 49aee384 follow-up
 
 | ID | State | Acceptance |
 |---|---|---|
-| CI-49AE-01 | Pending CI tests | Generate the Windows manual after CW-49AE-01 and verify its archive and references. |
-| CI-49AE-02 | Pending CI tests | Exercise the corrected production worker launch through authentication and shutdown on MSVC. |
-| CI-49AE-03 | Pending CI tests | Verify X25519 export failure handling, strict child-result checks, sanitizer report classification and Android JUnit report controls. |
-| CI-49AE-04 | Pending CI tests | Confirm the peer/RPC availability rule, persisted resume claims and deferred HAVE regression. |
+| CI-49AE-01 | Validated by CI | Generate the Windows manual after CW-49AE-01 and verify its archive and references. |
+| CI-49AE-02 | Validated by CI | Exercise the corrected production worker launch through authentication and shutdown on MSVC. |
+| CI-49AE-03 | Validated by CI | Verify X25519 export failure handling, strict child-result checks, sanitizer report classification and Android JUnit report controls. |
+| CI-49AE-04 | Validated by CI | Confirm the peer/RPC availability rule, persisted resume claims and deferred HAVE regression. |
+
+## ffc93c2e preventive follow-up
+
+| ID | State | Acceptance |
+|---|---|---|
+| CI-FFC9-01 | Pending CI tests | Verify strict OpenBSD Make forwarding and retained log, per-image PageHeap arming and required Android SAF case outcomes. |
+| RT-FFC9-01 | Pending CI tests | Verify upload admission preserves a partially downloaded torrent piece. |

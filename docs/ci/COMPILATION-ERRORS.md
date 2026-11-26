@@ -2613,3 +2613,11 @@ The [manual batch](TEST-FAILURES.md#49aee384-manual-batch) exposed no
 new native compiler or linker diagnostic. Windows reached MSVC CTest.
 Its document generation command failed during mandoc processing;
 see CW-49AE-01. The HHC and archive stages remain unverified.
+
+## ffc93c2e compile and link follow-up
+
+No new first-party compiler or linker error appeared in the fourteen
+incremental logs. The corrected Windows documentation target reached
+HHC and archive verification. The strict OpenBSD coverage gap concerns
+a second CMake cache initialized by Make; see CP-FFC9-01.
+[Manual batch and toolchains](TEST-FAILURES.md#ffc93c2e-manual-batch)

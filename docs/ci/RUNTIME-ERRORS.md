@@ -3297,3 +3297,22 @@ locked predicate as the peer bitfield and RPC pieces display. Persisted
 resume claims retain a distinct policy. The existing requests and
 verification suites now cover positive, saving and invalidated states.
 No failure of this path was observed in the published suite.
+
+## RT-087 and RT-49AE at ffc93c2e
+
+The [MSVC supervisor test](https://github.com/daviduhden/openi2pd/actions/runs/45706593741/job/139530055902)
+passed with the detached production launch and existing containment.
+The X25519 export and deferred HAVE fixtures passed in the native
+suites. The three sanitizer and fuzz LastTest logs were inspected for
+runtime report headers. See [coverage](TEST-FAILURES.md#ffc93c2e-manual-batch).
+
+### RT-FFC9-01 — Partial piece admitted for a disk upload
+
+Static inspection of PeerConnection request admission and the queued
+disk read found different requirements: an individual available block
+could be admitted although the cold read needs the complete piece for
+hash verification. The failure path could invalidate downloaded blocks.
+Piece::GetUploadEpoch checks completeness, bounds and eligibility while
+capturing the generation under the piece mutex. The queued request is
+rechecked before allocating disk work. The existing torrent security
+fixture now covers partial and complete states. Pending CI tests.
