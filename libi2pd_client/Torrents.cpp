@@ -1862,6 +1862,15 @@ namespace torrents
 		m_Data.reset ();
 	}
 
+	std::optional<uint64_t> Piece::GetUploadEpoch (size_t offset, size_t length) const
+	{
+		std::lock_guard lock (m_Mutex);
+		if (m_Blocks || m_IsSaving || m_IsVerificationPending || !length || length > REQUEST_BLOCK_SIZE
+			|| offset > m_Size || length > m_Size - offset)
+			return std::nullopt;
+		return m_BlockEpoch;
+	}
+
 	bool Piece::HasBlock (size_t offset) const
 	{
 		std::lock_guard<std::mutex> l (m_Mutex);
@@ -5240,15 +5249,7 @@ namespace torrents
 			if (m_IsFast) SendRejectRequestMsg (index, offset, length);
 			return;
 		}
-		if (!length || length > REQUEST_BLOCK_SIZE || index >= m_Torrent->GetNumPieces ())
-		{
-			if (m_IsFast) SendRejectRequestMsg (index, offset, length);
-			return;
-		}
-		const auto & piece = m_Torrent->GetPiece (index);
-		const auto pieceSize = piece.GetSize ();
-		if (offset > pieceSize || length > pieceSize - offset || !piece.HasBlock (offset)
-			|| !piece.HasBlock (offset + length - 1))
+		if (index >= m_Torrent->GetNumPieces () || !m_Torrent->GetPiece (index).GetUploadEpoch (offset, length))
 		{
 			if (m_IsFast) SendRejectRequestMsg (index, offset, length);
 			return;
@@ -5292,15 +5293,21 @@ namespace torrents
 		{
 			const auto request = m_IncomingRequestsQueue.front ();
 			m_IncomingRequestsQueue.pop_front ();
+			const auto [requestIndex, requestOffset, requestLength] = request;
+			const auto & requestedPiece = m_Torrent->GetPiece (requestIndex);
+			const auto epoch = requestedPiece.GetUploadEpoch (requestOffset, requestLength);
+			if (!epoch)
+			{
+				if (m_IsFast) SendRejectRequestMsg (requestIndex, requestOffset, requestLength);
+				continue;
+			}
 			if (SendRequestedBlock (request)) continue;
-			const auto index = std::get<0> (request);
-			auto ticket = m_UploadLoads.Acquire (
-				request, m_Torrent->GetPiece (index).GetBlockEpoch (), m_Torrent->GetPiece (index).GetSize ());
+			auto ticket = m_UploadLoads.Acquire (request, *epoch, requestedPiece.GetSize ());
 			if (!ticket)
 			{
 				// Capacity refusal is retryable through normal peer request
 				// timeouts (BEP 3) or Reject Request (BEP 6), never a hot retry.
-				if (m_IsFast) SendRejectRequestMsg (index, std::get<1> (request), std::get<2> (request));
+				if (m_IsFast) SendRejectRequestMsg (requestIndex, requestOffset, requestLength);
 				continue;
 			}
 			const std::weak_ptr<PeerConnection> weakPeer = weak_from_this ();

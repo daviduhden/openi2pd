@@ -447,6 +447,16 @@ void TestPieceRequestRelease ()
 	piece.ReleaseBlock (std::get<0> (released), epoch);
 	piece.ReleaseBlock (std::get<0> (second), epoch);
 	assert (!piece.IsRequested ());
+	auto [offset, len] = piece.GetNextBlockToRequest ();
+	piece.BlockReceived (block.data (), len, offset);
+	assert (piece.HasBlock (offset));
+	assert (!piece.GetUploadEpoch (offset, len));
+	auto [lastOffset, lastLen] = piece.GetNextBlockToRequest ();
+	piece.BlockReceived (block.data () + lastOffset, lastLen, lastOffset);
+	assert (piece.GetUploadEpoch (offset, len) == piece.GetBlockEpoch ());
+	assert (!piece.GetUploadEpoch (piece.GetSize (), 1));
+	piece.MarkPendingVerification ();
+	assert (!piece.GetUploadEpoch (offset, len));
 }
 
 void TestPieceCorruptionAndReset ()

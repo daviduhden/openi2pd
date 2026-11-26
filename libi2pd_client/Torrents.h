@@ -723,6 +723,9 @@ namespace torrents
 			const std::atomic<bool> & cancelled, std::vector<uint8_t> & out);
 		size_t GetSize () const { return m_Size; }
 		bool HasBlock (size_t offset) const;
+		/// Capture a complete piece generation for a bounded upload. Cold
+		/// pieces still need a full hash check before sending any bytes.
+		std::optional<uint64_t> GetUploadEpoch (size_t offset, size_t length) const;
 		struct BlockRequestLease
 		{
 			size_t offset;

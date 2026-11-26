@@ -130,6 +130,11 @@ Do not let them edit, build or run tests.
 
 ## Known issues and decisions
 
+- Compare upload admission with the cold reader's whole-piece requirement.
+  An available block in an incomplete piece cannot authorize a disk read
+  whose failure invalidates the piece. Capture the complete piece epoch
+  again when dequeuing, before reserving disk work.
+
 - A pending DHT query is a named record keyed by transaction ID. Clang 17
   with libstdc++ 13 rejected the former tuple-valued insertion in the
   standard library's piecewise construction path. Keep insert-only
