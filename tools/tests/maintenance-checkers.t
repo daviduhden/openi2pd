@@ -555,6 +555,39 @@ sub windows_workflow_fixtures {
     );
     write_file( $windows, $source );
 
+    my $unarmed = $source;
+    ok(
+        $unarmed =~ s/^ [ ]* \.echo[ ]OPENI2PD_HEAP_ARMED \n //mx,
+        'fixture removes the executed PageHeap marker'
+    );
+    write_file( $windows, $unarmed );
+    ( $code, $out ) = run_checker($checker);
+    is( $code, 1, 'workflow checker rejects unarmed PageHeap diagnostics' );
+    like(
+        $out,
+        qr/heap[ ]diagnostics[ ]must[ ]arm/x,
+        'diagnostic identifies missing PageHeap arming'
+    );
+    write_file( $windows, $source );
+
+    for my $marker (qw(OPENI2PD_HEAP_ARMED OPENI2PD_PROBE_ARMED)) {
+        my $early_resume = $source;
+        ok(
+            $early_resume =~
+              s/^([ ]*)\.echo[ ]\Q$marker\E$/$1g\n$1.echo $marker/mx,
+            "insert premature resume before $marker"
+        );
+        write_file( $windows, $early_resume );
+        ( $code, $out ) = run_checker($checker);
+        is( $code, 1, "reject premature resume before $marker" );
+        like(
+            $out,
+            qr/debugger[ ]requires[ ]one[ ]final[ ]resume/x,
+            'identify the misplaced debugger resume'
+        );
+    }
+    write_file( $windows, $source );
+
     for my $unsafe ( 'kp 40', '.dump /ma unsafe.dmp', 'dv' ) {
         my $candidate = $source;
         $candidate =~ s/kc[ ]40/$unsafe/gx;
@@ -682,13 +715,13 @@ sub windows_workflow_fixtures {
     for my $boundary (
         [ '@edx == 0xc0000142',         '@edx == 0' ],
         [ '.echo OPENI2PD_PROBE_ARMED', '.echo UNARMED' ],
-        [ 'sxn ibp',                   'sxe ibp' ],
-        [ 'sxn ibp',                   'sxn 0x80000003' ],
+        [ 'sxn ibp',                    'sxe ibp' ],
+        [ 'sxn ibp',                    'sxn 0x80000003' ],
         [
             ".echo OPENI2PD_PROBE_ARMED\n          sxn ibp",
             "sxn ibp\n          .echo OPENI2PD_PROBE_ARMED"
         ],
-        [ 'lmvm ntdll',                 'lmvm kernel32' ],
+        [ 'lmvm ntdll', 'lmvm kernel32' ],
         [
 'OPENI2PD_PROBE_KERNELBASE; .reload /f kernelbase.dll; lmvm kernelbase; g',
 'OPENI2PD_PROBE_KERNELBASE; .reload /f kernelbase.dll; lmvm kernel32; g'

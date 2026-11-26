@@ -102,6 +102,10 @@ execution. Ask for:
 
 ## Known issues and decisions
 
+- For each PageHeap parent image, check the standalone arming marker in
+  its own CDB log after installing the exception filters. The echoed
+  command is prefixed by the debugger prompt and does not witness execution.
+
 - Compare console startup in the authority-free supervisor fixture.
   Both console modes share the same image, restricted token, Job and
   standard handle allowlist. Correlate debugger exits by the logged

@@ -451,6 +451,7 @@ jobs:
           sxe -c ".echo OPENI2PD_CRASH; .lastevent; ln @rip; kc 40; q" 0xc0000374
           sxe -c ".echo OPENI2PD_CRASH; .lastevent; ln @rip; kc 40; q" 0xc0000409
           sxe -c ".echo OPENI2PD_CRASH; .lastevent; ln @rip; kc 40; q" 0xc0000142
+          .echo OPENI2PD_HEAP_ARMED
           g
           '@ | Set-Content -Encoding ascii $commands
           $failures = @()
@@ -493,6 +494,8 @@ jobs:
                 $failures += "$test missing debugger log"
               } elseif (Select-String -Path $log -Pattern '^OPENI2PD_CRASH\s*$' -Quiet) {
                 $failures += "$test debugger exception"
+              } elseif (-not (Select-String -Path $log -Pattern '^OPENI2PD_HEAP_ARMED\s*$' -Quiet)) {
+                $failures += "$test debugger commands did not arm"
               }
             } finally {
               & $gflags /p /disable $image

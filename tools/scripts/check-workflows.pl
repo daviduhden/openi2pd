@@ -1146,7 +1146,13 @@ q{$debugArguments = @('-G', '-noshell', '-lines', '-y', "`"$symbols`"", '-logo',
       if index( $windows,
         q{Select-String -Path $log -Pattern '^OPENI2PD_CRASH\s*$' -Quiet} ) < 0
       || index( $windows, q{$failures += "$test debugger exception"} ) < 0
-      || index( $windows, q{$failures += "$test missing debugger log"} ) < 0;
+      || index( $windows, q{$failures += "$test missing debugger log"} ) < 0
+      || index(
+        $windows,
+        q{Select-String -Path $log -Pattern '^OPENI2PD_HEAP_ARMED\s*$' -Quiet}
+      ) < 0
+      || index( $windows,
+        q{$failures += "$test debugger commands did not arm"} ) < 0;
     push @violations, windows_exception_command_errors($windows);
     return @violations;
 }
@@ -1168,6 +1174,34 @@ sub windows_exception_command_lines {
     return ( 0, @commands );
 }
 
+# A standalone resume transfers control before subsequent lines can arm.
+sub windows_resume_errors {
+    my ( $probe_mode, @lines ) = @_;
+    my @violations;
+    push @violations, 'build-windows.yml: debugger requires one final resume'
+      unless @lines && $lines[-1] eq 'g' && ( grep { $_ eq 'g' } @lines ) == 1;
+    push @violations,
+      'build-windows.yml: heap diagnostics must arm before resuming'
+      if !$probe_mode
+      && join( "\n", @lines ) !~ /\n\.echo[ ]OPENI2PD_HEAP_ARMED\ng\z/x;
+    return @violations;
+}
+
+sub windows_exception_event_errors {
+    my ( $line, $events, $seen, $allowed ) = @_;
+    my ( $body, $event ) = $line =~ /\A sxe \s+ -c \s+ "([^"]+)" \s+ (\S+) \z/x;
+    return 'build-windows.yml: unsupported crash debugger line'
+      unless defined $body && $events->{$event};
+    $seen->{$event} = 1;
+    my @violations;
+    for my $command ( split /\s*;\s*/x, $body ) {
+        push @violations,
+          'build-windows.yml: crash diagnostics may print code locations only'
+          unless $allowed->{$command};
+    }
+    return @violations;
+}
+
 # Validate each supplied exception-command block independently.
 sub windows_exception_command_errors {
     my ( $windows, $probe_mode ) = @_;
@@ -1187,8 +1221,10 @@ q{sxe -c ".echo OPENI2PD_PROBE_KERNELBASE; .reload /f kernelbase.dll; lmvm kerne
     my %probe_seen;
     my %allowed = map { $_ => 1 }
       ( '.echo OPENI2PD_CRASH', '.lastevent', 'ln @rip', 'kc 40', 'q' );
+    push @violations, windows_resume_errors( $probe_mode, @lines );
     for my $line (@lines) {
         next if !length $line || $line eq 'g';
+        next if !$probe_mode && $line eq '.echo OPENI2PD_HEAP_ARMED';
         if (
             $probe_mode
             && (   $line eq '.echo OPENI2PD_PROBE_ARMED'
@@ -1202,19 +1238,8 @@ q{sxe -c ".echo OPENI2PD_PROBE_KERNELBASE; .reload /f kernelbase.dll; lmvm kerne
             $probe_seen{$line}++;
             next;
         }
-        my ( $body, $event ) =
-          $line =~ /\A sxe \s+ -c \s+ "([^"]+)" \s+ (\S+) \z/x;
-        if ( !defined $body || !$events{$event} ) {
-            push @violations,
-              'build-windows.yml: unsupported crash debugger line';
-            next;
-        }
-        $seen{$event} = 1;
-        for my $command ( split /\s*;\s*/x, $body ) {
-            push @violations,
-'build-windows.yml: crash diagnostics may print code locations only'
-              unless $allowed{$command};
-        }
+        push @violations,
+          windows_exception_event_errors( $line, \%events, \%seen, \%allowed );
     }
     push @violations, 'build-windows.yml: missing bounded crash command file'
       unless $closed && keys(%seen) == keys(%events);
@@ -1223,9 +1248,10 @@ q{sxe -c ".echo OPENI2PD_PROBE_KERNELBASE; .reload /f kernelbase.dll; lmvm kerne
       if $probe_mode
       && ( keys(%probe_seen) != 6 || grep { $_ != 1 } values %probe_seen );
     push @violations,
-      'build-windows.yml: startup probe must arm before the initial-break filter'
+'build-windows.yml: startup probe must arm before the initial-break filter'
       if $probe_mode
-      && index( join( "\n", @lines ), ".echo OPENI2PD_PROBE_ARMED\nsxn ibp\n" ) != 0;
+      && index( join( "\n", @lines ), ".echo OPENI2PD_PROBE_ARMED\nsxn ibp\n" )
+      != 0;
     return @violations;
 }
 
